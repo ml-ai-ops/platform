@@ -1,0 +1,6 @@
+pytest
+pytest-cov # check how much of the code is actually tested
+pylint # for linting
+flake8 # alt for lintng
+black # formatting tool
+ipython
