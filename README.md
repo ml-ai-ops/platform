@@ -9,10 +9,10 @@ The *ML Engineering Hierarchy of Needs* defines the foundational layers required
 
 ```mermaid
 flowchart TD
-    A[DevOps<br>CI/CD, IaC, Release engineering] --> B
-    B[Data Automation<br>Data pipelines, Validation, Data versioning] --> C
-    C[Platform Automation<br>ML pipelines, Feature Store, Metadata mgmt] --> D
-    D[MLOps<br>Automated training, Deployment, Monitoring & drift]
+    A[MLOps<br>Automated training, Deployment, Monitoring & drift] --> B
+    B[Platform Automation<br>ML pipelines, Feature Store, Metadata mgmt] --> C
+    C[Data Automation<br>Data pipelines, Validation, Data versioning] --> D
+    D[DevOps<br>CI/CD, IaC, Release engineering]
 ```
 
 ### Layers Explained
