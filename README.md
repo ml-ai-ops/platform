@@ -52,8 +52,8 @@ A core concept showing how models continuously improve after deployment.
 ```mermaid
 flowchart LR
     A[Train & Retrain Model] --> B[Deploy + Version]
-    B --> C[Monitor]
-    C --> D[Audit Trail & Artifacts]
+    B --> C[Audit Trail & Artifacts]
+    C --> D[Monitor]
     D --> A
 ```
 
