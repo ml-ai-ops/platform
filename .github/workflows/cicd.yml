@@ -1,5 +1,5 @@
 name: Azure Python 3.5
-on:[push]
+  on:[push]
 jobs:
   build:
     runs-on: ubuntu-latest
