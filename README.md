@@ -9,10 +9,10 @@ The *ML Engineering Hierarchy of Needs* defines the foundational layers required
 
 ```mermaid
 flowchart TD
-    A[DevOps<br>CI/CD, IaC, Release engineering] --> B
-    B[Data Automation<br>Data pipelines, Validation, Data versioning] --> C
-    C[Platform Automation<br>ML pipelines, Feature Store, Metadata mgmt] --> D
-    D[MLOps<br>Automated training, Deployment, Monitoring & drift]
+    A[MLOps<br>Automated training, Deployment, Monitoring & drift] --> B
+    B[Platform Automation<br>ML pipelines, Feature Store, Metadata mgmt] --> C
+    C[Data Automation<br>Data pipelines, Validation, Data versioning] --> D
+    D[DevOps<br>CI/CD, IaC, Release engineering]
 ```
 
 ### Layers Explained
@@ -52,8 +52,8 @@ A core concept showing how models continuously improve after deployment.
 ```mermaid
 flowchart LR
     A[Train & Retrain Model] --> B[Deploy + Version]
-    B --> C[Monitor]
-    C --> D[Audit Trail & Artifacts]
+    B --> C[Audit Trail & Artifacts]
+    C --> D[Monitor]
     D --> A
 ```
 
@@ -69,15 +69,15 @@ flowchart LR
 - Canary or blue/green deployment strategies
 - Model registry integration
 
-#### **3. Monitor**
-- Detect data drift and concept drift
-- Track latency, throughput, error rates
-- Alert on prediction anomalies
-
-#### **4. Audit Trail & Artifacts**
+#### **3. Audit Trail & Artifacts**
 - Full lineage tracking (data → code → model → environment)
 - Compliance and governance records
 - Insights for debugging and retraining decisions
+
+#### **4. Monitor**
+- Detect data drift and concept drift
+- Track latency, throughput, error rates
+- Alert on prediction anomalies
 
 ## CI/CD Pipeline for ML
 
