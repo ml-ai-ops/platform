@@ -32,16 +32,24 @@ type OutboxEvent struct {
 }
 
 func OpenPostgres(ctx context.Context, databaseURL, tenant string) (*Postgres, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	if tenant == "" {
+		tenant = "default"
+	}
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	config.AfterConnect = func(ctx context.Context, connection *pgx.Conn) error {
+		_, err := connection.Exec(ctx, `SELECT set_config('app.tenant_id', $1, false)`, tenant)
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, err
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, err
-	}
-	if tenant == "" {
-		tenant = "default"
 	}
 	repository := &Postgres{pool: pool, tenant: tenant}
 	if err := repository.Migrate(ctx); err != nil {
@@ -217,6 +225,19 @@ func (p *Postgres) write(kind, resourceID string, value any, action, actor strin
 	if err != nil {
 		return err
 	}
+	if commandTopic := topicForAction(action); commandTopic != "" {
+		commandPayload, marshalErr := json.Marshal(map[string]any{
+			"id": resourceID, "kind": kind, "action": action, "resource": json.RawMessage(payload),
+			"actor": event.Actor, "tenant": p.tenant, "occurred_at": event.CreatedAt,
+		})
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO outbox_events (tenant_id,id,topic,event_key,payload) VALUES ($1,$2,$3,$4,$5)`,
+			p.tenant, id("out"), commandTopic, resourceID, commandPayload); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -288,6 +309,23 @@ func actorOrAnonymous(actor string) string {
 		return "anonymous"
 	}
 	return actor
+}
+
+func topicForAction(action string) string {
+	switch {
+	case strings.HasPrefix(action, "pipeline."):
+		return "mlaiops.pipeline.commands"
+	case strings.HasPrefix(action, "model."):
+		return "mlaiops.model.commands"
+	case strings.HasPrefix(action, "agent."):
+		return "mlaiops.agent.commands"
+	case strings.HasPrefix(action, "tool."):
+		return "mlaiops.tool.commands"
+	case strings.HasPrefix(action, "connection."):
+		return "mlaiops.connection.commands"
+	default:
+		return ""
+	}
 }
 
 func (p *Postgres) String() string { return fmt.Sprintf("postgres(tenant=%s)", p.tenant) }

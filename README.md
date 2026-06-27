@@ -14,6 +14,10 @@ infrastructure services and Python owns the ML-facing SDK and workload primitive
 - OpenAI-compatible LLM reverse proxy with asynchronous trace emission
 - Prometheus component-health collector
 - Standard API clients for KFP, MLflow, Langfuse, and Kafka REST Proxy
+- PostgreSQL repositories with transactional Kafka outbox delivery
+- OIDC/JWKS authentication with tenant and role enforcement
+- Leader-elected Kubernetes controllers for agents, pipelines, models and KServe deployment
+- Kafka lifecycle worker translating durable commands into Nexus CRDs
 - Typed Python SDK, pipeline compiler, tool registry, and tracing primitive
 - Single-binary CLI for common platform operations
 - Container and Kubernetes deployment assets
@@ -44,6 +48,7 @@ with MLAIOpsClient(actor="engineer@example.com") as client:
 
 ```bash
 make verify
+make test-integration
 ```
 
 Builds produced in `bin/`:

@@ -60,9 +60,68 @@ type NexusAgentList struct {
 }
 
 func AddToScheme(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(GroupVersion, &NexusAgent{}, &NexusAgentList{})
+	scheme.AddKnownTypes(GroupVersion, &NexusAgent{}, &NexusAgentList{}, &NexusPipelineRun{}, &NexusPipelineRunList{}, &NexusModelPromotion{}, &NexusModelPromotionList{})
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil
+}
+
+type NexusPipelineRunSpec struct {
+	PipelineRef        string            `json:"pipelineRef"`
+	Parameters         map[string]string `json:"parameters,omitempty"`
+	ServiceAccountName string            `json:"serviceAccountName,omitempty"`
+}
+
+type NexusPipelineRunStatus struct {
+	Phase       string       `json:"phase,omitempty"`
+	WorkflowRef string       `json:"workflowRef,omitempty"`
+	StartedAt   *metav1.Time `json:"startedAt,omitempty"`
+	FinishedAt  *metav1.Time `json:"finishedAt,omitempty"`
+	Message     string       `json:"message,omitempty"`
+}
+
+type NexusPipelineRun struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              NexusPipelineRunSpec   `json:"spec,omitempty"`
+	Status            NexusPipelineRunStatus `json:"status,omitempty"`
+}
+
+type NexusPipelineRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []NexusPipelineRun `json:"items"`
+}
+
+type PromotionGate struct {
+	Metric   string  `json:"metric"`
+	Operator string  `json:"operator"`
+	Value    float64 `json:"value"`
+}
+
+type NexusModelPromotionSpec struct {
+	ModelName   string          `json:"modelName"`
+	Version     string          `json:"version"`
+	TargetStage string          `json:"targetStage"`
+	Gates       []PromotionGate `json:"gates,omitempty"`
+}
+
+type NexusModelPromotionStatus struct {
+	Phase               string `json:"phase,omitempty"`
+	Message             string `json:"message,omitempty"`
+	InferenceServiceRef string `json:"inferenceServiceRef,omitempty"`
+}
+
+type NexusModelPromotion struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              NexusModelPromotionSpec   `json:"spec,omitempty"`
+	Status            NexusModelPromotionStatus `json:"status,omitempty"`
+}
+
+type NexusModelPromotionList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []NexusModelPromotion `json:"items"`
 }
 
 func (in *NexusAgent) DeepCopyObject() runtime.Object {
@@ -86,6 +145,62 @@ func (in *NexusAgentList) DeepCopyObject() runtime.Object {
 	out.Items = make([]NexusAgent, len(in.Items))
 	for i := range in.Items {
 		out.Items[i] = *(in.Items[i].DeepCopyObject().(*NexusAgent))
+	}
+	return out
+}
+
+func (in *NexusPipelineRun) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := new(NexusPipelineRun)
+	*out = *in
+	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	out.Spec.Parameters = make(map[string]string, len(in.Spec.Parameters))
+	for key, value := range in.Spec.Parameters {
+		out.Spec.Parameters[key] = value
+	}
+	if in.Status.StartedAt != nil {
+		value := in.Status.StartedAt.DeepCopy()
+		out.Status.StartedAt = value
+	}
+	if in.Status.FinishedAt != nil {
+		value := in.Status.FinishedAt.DeepCopy()
+		out.Status.FinishedAt = value
+	}
+	return out
+}
+func (in *NexusPipelineRunList) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := new(NexusPipelineRunList)
+	*out = *in
+	out.Items = make([]NexusPipelineRun, len(in.Items))
+	for i := range in.Items {
+		out.Items[i] = *(in.Items[i].DeepCopyObject().(*NexusPipelineRun))
+	}
+	return out
+}
+func (in *NexusModelPromotion) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := new(NexusModelPromotion)
+	*out = *in
+	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	out.Spec.Gates = append([]PromotionGate(nil), in.Spec.Gates...)
+	return out
+}
+func (in *NexusModelPromotionList) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := new(NexusModelPromotionList)
+	*out = *in
+	out.Items = make([]NexusModelPromotion, len(in.Items))
+	for i := range in.Items {
+		out.Items[i] = *(in.Items[i].DeepCopyObject().(*NexusModelPromotion))
 	}
 	return out
 }

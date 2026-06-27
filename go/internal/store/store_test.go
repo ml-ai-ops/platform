@@ -1,3 +1,4 @@
+// Repository contract tests shared by local persistence behavior.
 package store
 
 import (

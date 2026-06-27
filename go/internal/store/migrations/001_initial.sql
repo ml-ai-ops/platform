@@ -38,3 +38,25 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 
 CREATE INDEX IF NOT EXISTS outbox_unpublished_idx
     ON outbox_events (sequence) WHERE published_at IS NULL;
+
+ALTER TABLE platform_resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE outbox_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_resources FORCE ROW LEVEL SECURITY;
+ALTER TABLE audit_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE outbox_events FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_resources ON platform_resources;
+CREATE POLICY tenant_isolation_resources ON platform_resources
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+DROP POLICY IF EXISTS tenant_isolation_audit ON audit_events;
+CREATE POLICY tenant_isolation_audit ON audit_events
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+DROP POLICY IF EXISTS tenant_isolation_outbox ON outbox_events;
+CREATE POLICY tenant_isolation_outbox ON outbox_events
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));

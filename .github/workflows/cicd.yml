@@ -8,6 +8,19 @@ on:
 jobs:
   go:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.9-alpine
+        env:
+          POSTGRES_USER: mlaiops
+          POSTGRES_PASSWORD: mlaiops-ci
+          POSTGRES_DB: mlaiops
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U mlaiops"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     defaults:
       run:
         working-directory: go
@@ -20,6 +33,9 @@ jobs:
       - run: gofmt -l . | tee /tmp/unformatted && test ! -s /tmp/unformatted
       - run: go vet ./...
       - run: go test -race ./...
+      - run: go test -tags=integration ./integration
+        env:
+          TEST_DATABASE_URL: postgres://mlaiops:mlaiops-ci@localhost:5432/mlaiops?sslmode=disable
       - run: go build ./cmd/...
       - name: Enforce architecture exclusions
         run: |

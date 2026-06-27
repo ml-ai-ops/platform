@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/mlaiops/platform/internal/integrations"
 	platformoperator "github.com/mlaiops/platform/internal/operator"
 	mlaiopsv1 "github.com/mlaiops/platform/pkg/kube/v1alpha1"
 )
@@ -37,6 +38,13 @@ func main() {
 	})
 	must(err)
 	must((&platformoperator.AgentReconciler{Client: manager.GetClient()}).SetupWithManager(manager))
+	must((&platformoperator.PipelineReconciler{
+		Client: manager.GetClient(), KFP: integrations.NewKFP(os.Getenv("KFP_URL"), os.Getenv("KFP_TOKEN")),
+		ExperimentID: os.Getenv("KFP_EXPERIMENT_ID"),
+	}).SetupWithManager(manager))
+	must((&platformoperator.ModelPromotionReconciler{
+		Client: manager.GetClient(), MLflow: integrations.NewMLflow(os.Getenv("MLFLOW_URL"), os.Getenv("MLFLOW_TOKEN")),
+	}).SetupWithManager(manager))
 	must(manager.AddHealthzCheck("healthz", healthz.Ping))
 	must(manager.AddReadyzCheck("readyz", healthz.Ping))
 	log.Printf("starting mlaiops Kubernetes operator")
