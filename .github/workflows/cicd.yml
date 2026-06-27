@@ -1,25 +1,35 @@
-name: CI — Python
+name: Platform CI
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  pull_request:
+
 jobs:
-  build:
+  go:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.9, 3.11]
+    defaults:
+      run:
+        working-directory: go
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        make install
-    - name: Lint
-      run: |
-        make lint
-    - name: Test
-      run: |
-        make test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: go/go.mod
+      - run: gofmt -l . | tee /tmp/unformatted && test ! -s /tmp/unformatted
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build ./cmd/gateway
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: make install
+      - run: ruff check python
+      - run: python -m pytest -q

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus — ML work without the maze</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <a class="brand" href="#"><span class="brand-mark">N</span><span>Nexus</span></a>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
+        <button class="nav-item" data-view="projects"><span>◇</span> Projects</button>
+        <button class="nav-item" data-view="pipelines"><span>↯</span> Pipelines</button>
+        <button class="nav-item" data-view="catalog"><span>▦</span> Catalog</button>
+        <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="cluster"><i></i><span><b>Local workspace</b><small>Gateway connected</small></span></div>
+        <a href="/api/openapi.json" target="_blank">API reference ↗</a>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">ML WORKSPACE</p><h1 id="page-title">Good morning, builder.</h1></div>
+        <button class="primary" id="new-project">＋ New project</button>
+      </header>
+
+      <section id="overview" class="view active">
+        <div class="hero">
+          <div><span class="pill">YOUR GOLDEN PATH</span><h2>From idea to a reliable model,<br>without the platform archaeology.</h2>
+          <p>Start with a proven project shape. Nexus wires the workflow together and tells you exactly what is real, missing, or next.</p></div>
+          <div class="progress-ring" id="progress-ring"><strong>75%</strong><span>ready</span></div>
+        </div>
+
+        <div class="stat-grid">
+          <article><span>Projects</span><strong id="stat-projects">—</strong><small>in this workspace</small></article>
+          <article><span>Active runs</span><strong id="stat-runs">—</strong><small>queued or running</small></article>
+          <article><span>Platform health</span><strong id="stat-health">—</strong><small>components connected</small></article>
+        </div>
+
+        <div class="split">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">QUICK START</p><h3>Keep your momentum</h3></div></div>
+            <ol class="checklist">
+              <li class="done"><span>✓</span><div><b>Create a workspace</b><small>Your local control plane is running.</small></div></li>
+              <li class="done"><span>✓</span><div><b>Choose a project template</b><small>Start with sane conventions, not an empty folder.</small></div></li>
+              <li><span>3</span><div><b>Connect your infrastructure</b><small>Bring Kubernetes, MLflow, Feast and object storage online.</small></div><button data-view-target="platform">Configure</button></li>
+              <li><span>4</span><div><b>Ship your first real run</b><small>Submit the sample pipeline to your connected engine.</small></div></li>
+            </ol>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h3>Pipeline runs</h3></div><button class="link" data-view-target="pipelines">View all</button></div>
+            <div id="recent-runs" class="run-list loading">Loading runs…</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Your projects</h2><p>Each project gets a clear path from exploration to production.</p></div></div><div id="project-grid" class="card-grid"></div></section>
+      <section id="pipelines" class="view"><div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>One place to understand every experiment and production workflow.</p></div></div><div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div></section>
+      <section id="catalog" class="view"><div class="section-heading"><div><p class="eyebrow">DISCOVERABILITY</p><h2>Shared catalog</h2><p>Models, features, agents, and tools—searchable and understandable.</p></div><div class="filters"><button class="active" data-kind="">All</button><button data-kind="model">Models</button><button data-kind="feature">Features</button><button data-kind="agent">Agents</button><button data-kind="tool">Tools</button></div></div><div id="catalog-grid" class="card-grid"></div></section>
+      <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Connect each production service when you are ready.</p></div></div><div id="component-grid" class="component-grid"></div></section>
+    </main>
+  </div>
+
+  <dialog id="project-dialog">
+    <form id="project-form">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">NEW PROJECT</p><h2>What are you building?</h2><p>Pick the closest starting point. You can change every part later.</p>
+      <label>Project name<input name="name" required minlength="3" placeholder="e.g. churn-prediction"></label>
+      <label>What is it for?<textarea name="description" placeholder="A short, useful description"></textarea></label>
+      <label>Starting template<select name="template"><option value="tabular-classification">Tabular classification</option><option value="forecasting">Time-series forecasting</option><option value="rag-agent">RAG / AI agent</option><option value="blank">Blank expert workspace</option></select></label>
+      <p class="form-error" id="form-error"></p><button class="primary submit" type="submit">Create project →</button>
+    </form>
+  </dialog>
+  <div id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

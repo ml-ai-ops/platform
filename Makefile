@@ -1,14 +1,28 @@
+.PHONY: install run test test-go test-python lint format build
+
 install:
-	pip install --upgrade pip &&\
-		pip install -r requirements.txt
+	python -m pip install -r requirements.txt
+	python -m pip install -e ./python
 
-test:
-	python -m pytest -vv test_hello.py
+run:
+	cd go && go run ./cmd/gateway
 
-format:
-	black *.py
+test: test-go test-python
+
+test-go:
+	cd go && go test ./...
+
+test-python:
+	python -m pytest python/tests -q
 
 lint:
-	pylint --disable=R,C *.py
+	cd go && go vet ./...
+	ruff check python
 
-all: install lint test format
+format:
+	cd go && gofmt -w .
+	ruff format python
+
+build:
+	mkdir -p bin
+	cd go && go build -buildvcs=false -o ../bin/mlaiops-gateway ./cmd/gateway

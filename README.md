@@ -1,165 +1,82 @@
-# MLOps
+# Nexus: ml-ai-ops-platform
 
-## Overview
-MLOps is the practice of applying DevOps principles to machine learning workflows, ensuring reproducibility, automation, monitoring, and continuous improvement of ML systems in production. It bridges the gap between data science experimentation and reliable, scalable production deployment.
+Nexus is the first runnable vertical slice of the platform described in
+[`mlops-platform-prd.md`](mlops-platform-prd.md). It gives novice ML engineers a guided
+golden path while keeping the operational boundaries experienced platform engineers need.
 
-## ML Engineering Hierarchy of Needs
+## What works now
 
-The *ML Engineering Hierarchy of Needs* defines the foundational layers required to operationalize machine learning. Each upper layer depends on the stability of the layers below it.
+- A dependency-light Go control-plane gateway
+- A responsive workspace for projects, pipeline runs, shared assets, and component health
+- Guided project creation with tabular ML, forecasting, RAG/agent, and expert templates
+- Pipeline submission contracts with honest queued/simulated state
+- A typed Python SDK suitable for notebooks and training jobs
+- OpenAPI discovery at `/api/openapi.json`
+- Unit and API tests in both Go and Python
 
-```mermaid
-flowchart TD
-    A[MLOps<br>Automated training, Deployment, Monitoring & drift] --> B
-    B[Platform Automation<br>ML pipelines, Feature Store, Metadata mgmt] --> C
-    C[Data Automation<br>Data pipelines, Validation, Data versioning] --> D
-    D[DevOps<br>CI/CD, IaC, Release engineering]
-```
+The component page deliberately marks MLflow, Feast, KServe, Kafka, MinIO, and Langfuse as
+`not configured`. The MVP defines their integration seams; it does not claim those production
+systems exist until they are connected.
 
-### Layers Explained
+## Run it
 
-#### **1. DevOps (Foundation)**
-The essential building block for ML systems:
-- CI/CD pipelines for code and model delivery
-- Infrastructure as Code (IaC)
-- Release engineering and automated testing
-- Containerization and orchestration
+Requirements: Go 1.22+.
 
-#### **2. Data Automation**
-Reliable and automated data processes:
-- Data ingestion & ETL pipelines
-- Data validation and schema enforcement
-- Data versioning and lineage tracking
-- Automated drift detection
-
-#### **3. Platform Automation**
-Builds scalable, consistent ML infrastructure:
-- Feature stores for online/offline features
-- Centralized artifact & metadata management
-- Standardized training and serving environments
-- Reusable ML pipeline components
-
-#### **4. MLOps (ML Automation)**
-True machine learning operationalization:
-- Automated train and retrain pipelines
-- Model evaluation and comparison
-- Deployment automation with versioning
-- Monitoring and continuous improvement
-
-## MLOps Feedback Loop
-
-A core concept showing how models continuously improve after deployment.
-
-```mermaid
-flowchart LR
-    A[Train & Retrain Model] --> B[Deploy + Version]
-    B --> C[Audit Trail & Artifacts]
-    C --> D[Monitor]
-    D --> A
-```
-
-### Feedback Loop Stages
-
-#### **1. Train & Retrain Models**
-- Reusable training pipelines
-- Hyperparameter tuning
-- Versioning of datasets, code, and models
-
-#### **2. Deploy + Version**
-- Automated deployments to staging and production
-- Canary or blue/green deployment strategies
-- Model registry integration
-
-#### **3. Audit Trail & Artifacts**
-- Full lineage tracking (data → code → model → environment)
-- Compliance and governance records
-- Insights for debugging and retraining decisions
-
-#### **4. Monitor**
-- Detect data drift and concept drift
-- Track latency, throughput, error rates
-- Alert on prediction anomalies
-
-## CI/CD Pipeline for ML
-
-CI/CD is foundational for continuous delivery of both software and machine learning artifacts.
-
-```mermaid
-flowchart LR
-    A[Push Code] --> B[Lint & Test]
-    B -->|Pass| C[Build Artifact]
-    B -->|Fail| F[Notify Dev]
-    C --> D[Staging]
-    D -->|Pass| E[Production]
-    D -->|Fail| F
-    E -->|Fail| F
-```
-
-## Key Components of an MLOps System
-
-### **1. Data Pipeline**
-- Data ingestion
-- Validation (schema checks, drift checks)
-- Transformation and feature preprocessing
-
-### **2. Feature Store**
-- Centralized storage for features
-- Ensures training-serving consistency
-
-### **3. Model Registry**
-- Stores model metadata, versions, and artifacts
-- Enables rollbacks and A/B testing
-
-### **4. Experiment Tracking**
-- Log hyperparameters, metrics, datasets, and code versions
-- Compare experiments reproducibly
-
-### **5. Model Monitoring**
-- Drift detection (data, model, concept)
-- Performance and reliability monitoring
-- Alerts and retraining triggers
-
-### **6. Orchestration**
-- Workflow automation (Airflow, Prefect, KubeFlow)
-- Dependency management and scheduling
-
-## Folder Structure
-
-```
-.
-├── data/
-├── notebooks/
-├── src/
-│   ├── data/
-│   ├── features/
-│   ├── models/
-│   └── serving/
-├── tests/
-├── configs/
-├── scripts/
-├── models/
-├── Makefile
-├── requirements.txt
-└── README.md
-```
-
-## Quick Start
-
-Install dependencies:
 ```bash
-make install
+make run
 ```
 
-Run tests:
+Open <http://localhost:8080>. There are no database or JavaScript build dependencies for the
+local experience.
+
+## Test it
+
 ```bash
+python -m pip install -r requirements.txt
 make test
-```
-
-Run linting:
-```bash
 make lint
 ```
 
-## References
+## Use the Python SDK
 
-- Designing Machine Learning Systems - Chip Huyen
-- Practical MLOps
+Install the local package:
+
+```bash
+python -m pip install -e ./python
+python examples/quickstart.py
+```
+
+Or use it directly:
+
+```python
+from mlaiops_sdk import MLAIOpsClient
+
+with MLAIOpsClient("http://localhost:8080") as client:
+    project = client.create_project("churn", template="tabular-classification")
+    run = client.submit_pipeline(project.id)
+```
+
+## Architecture
+
+```text
+Browser workspace ──HTTP/JSON──> Go gateway ──adapter contracts──> Kubernetes / OSS services
+                                      ▲
+Python SDK / notebooks ───────────────┘
+```
+
+The current store is intentionally in memory so the slice remains instantly runnable. The next
+production milestone is a Kubernetes repository and reconciliation layer for
+`NexusPipelineRun`, followed by OIDC/RBAC and the MLflow/Argo adapters.
+
+## Repository shape
+
+```text
+go/                    Go gateway, API contracts, web workspace, tests
+python/mlaiops_sdk/    Typed Python client
+python/tests/          SDK tests
+examples/              Golden-path examples
+Dockerfile             Distroless production image
+```
+
+The PRD's exclusion policy is enforced by design: this code has no Iguazio, MLRun, Nuclio, or
+V3IO dependencies.

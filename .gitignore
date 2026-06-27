@@ -30,3 +30,4 @@ htmlcov/
 .tox/
 .nox/
 .coverage
+bin/
