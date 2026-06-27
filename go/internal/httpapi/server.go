@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"log"
 	"net/http"
@@ -29,6 +30,17 @@ func New(data *store.Store, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/v1/pipelines/submit", server.submitPipeline)
 	mux.HandleFunc("GET /api/v1/components", server.components)
 	mux.HandleFunc("GET /api/v1/catalog", server.catalog)
+	mux.HandleFunc("GET /api/v1/models", server.models)
+	mux.HandleFunc("POST /api/v1/models", server.registerModel)
+	mux.HandleFunc("POST /api/v1/models/{id}/promote", server.promoteModel)
+	mux.HandleFunc("GET /api/v1/agents", server.agents)
+	mux.HandleFunc("POST /api/v1/agents", server.deployAgent)
+	mux.HandleFunc("PUT /api/v1/agents/{id}/traffic", server.agentTraffic)
+	mux.HandleFunc("GET /api/v1/tools", server.tools)
+	mux.HandleFunc("POST /api/v1/tools", server.registerTool)
+	mux.HandleFunc("GET /api/v1/connections", server.connections)
+	mux.HandleFunc("POST /api/v1/connections", server.createConnection)
+	mux.HandleFunc("GET /api/v1/audit", server.audit)
 	mux.HandleFunc("GET /api/openapi.json", server.openapi)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 	return logging(cors(mux))
@@ -70,7 +82,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	project, err := s.store.CreateProject(req)
+	project, err := s.store.CreateProject(req, actor(r))
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
 		return
@@ -88,7 +100,7 @@ func (s *Server) submitPipeline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	run, err := s.store.SubmitPipeline(req)
+	run, err := s.store.SubmitPipeline(req, actor(r))
 	if err != nil {
 		status := http.StatusUnprocessableEntity
 		if err == store.ErrNotFound {
@@ -119,8 +131,115 @@ func (s *Server) catalog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, filtered)
 }
 
+func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.Models()
+	writeJSON(w, http.StatusOK, api.Page[api.Model]{Items: items, Total: len(items)})
+}
+
+func (s *Server) registerModel(w http.ResponseWriter, r *http.Request) {
+	var req api.RegisterModelRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.RegisterModel(req, actor(r))
+	writeMutation(w, item, err, http.StatusCreated)
+}
+
+func (s *Server) promoteModel(w http.ResponseWriter, r *http.Request) {
+	var req api.PromoteModelRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.PromoteModel(r.PathValue("id"), req.Stage, actor(r))
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+func (s *Server) agents(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.Agents()
+	writeJSON(w, http.StatusOK, api.Page[api.Agent]{Items: items, Total: len(items)})
+}
+
+func (s *Server) deployAgent(w http.ResponseWriter, r *http.Request) {
+	var req api.DeployAgentRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.DeployAgent(req, actor(r))
+	writeMutation(w, item, err, http.StatusAccepted)
+}
+
+func (s *Server) agentTraffic(w http.ResponseWriter, r *http.Request) {
+	var req api.TrafficRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.SetAgentTraffic(r.PathValue("id"), req.CanaryWeight, actor(r))
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+func (s *Server) tools(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.Tools()
+	writeJSON(w, http.StatusOK, api.Page[api.Tool]{Items: items, Total: len(items)})
+}
+
+func (s *Server) registerTool(w http.ResponseWriter, r *http.Request) {
+	var req api.RegisterToolRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.RegisterTool(req, actor(r))
+	writeMutation(w, item, err, http.StatusCreated)
+}
+
+func (s *Server) connections(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.Connections()
+	writeJSON(w, http.StatusOK, api.Page[api.Connection]{Items: items, Total: len(items)})
+}
+
+func (s *Server) createConnection(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateConnectionRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.CreateConnection(req, actor(r))
+	writeMutation(w, item, err, http.StatusCreated)
+}
+
+func (s *Server) audit(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.Audit()
+	writeJSON(w, http.StatusOK, api.Page[api.AuditEvent]{Items: items, Total: len(items)})
+}
+
+func writeMutation[T any](w http.ResponseWriter, value T, err error, success int) {
+	if err == nil {
+		writeJSON(w, success, value)
+		return
+	}
+	status, code := http.StatusUnprocessableEntity, "validation_error"
+	if errors.Is(err, store.ErrNotFound) {
+		status, code = http.StatusNotFound, "not_found"
+	}
+	if errors.Is(err, store.ErrConflict) {
+		status, code = http.StatusConflict, "conflict"
+	}
+	writeError(w, status, code, err.Error())
+}
+
+func actor(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-MLAIOps-Actor")); value != "" {
+		return value
+	}
+	return "anonymous"
+}
+
 func decode(r *http.Request, target any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
+	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(target)
 }

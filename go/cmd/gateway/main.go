@@ -23,7 +23,11 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	server := &http.Server{Addr: ":" + port, Handler: httpapi.New(store.New(), static)}
+	dataPath := os.Getenv("MLAIOPS_DATA_PATH")
+	if dataPath == "" {
+		dataPath = "data/platform.json"
+	}
+	server := &http.Server{Addr: ":" + port, Handler: httpapi.New(store.New(dataPath), static)}
 	log.Printf("ml-ai-ops-platform is ready at http://localhost:%s", port)
 	log.Fatal(server.ListenAndServe())
 }

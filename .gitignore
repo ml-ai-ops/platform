@@ -31,3 +31,4 @@ htmlcov/
 .nox/
 .coverage
 bin/
+data/
