@@ -23,7 +23,7 @@ the current priority.
 
 ## Quick start
 
-Requires Go 1.22+ and Python 3.11+.
+Requires Go 1.23+ and Python 3.11+.
 
 ```bash
 make install

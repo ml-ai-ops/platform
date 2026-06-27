@@ -15,11 +15,11 @@ import (
 )
 
 type Server struct {
-	store  *store.Store
+	store  store.Repository
 	static fs.FS
 }
 
-func New(data *store.Store, static fs.FS) http.Handler {
+func New(data store.Repository, static fs.FS) http.Handler {
 	server := &Server{store: data, static: static}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", server.health)
