@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mlaiops/platform/internal/auth"
 	"github.com/mlaiops/platform/internal/platform"
 	"github.com/mlaiops/platform/internal/store"
 	"github.com/mlaiops/platform/pkg/api"
@@ -232,6 +233,12 @@ func writeMutation[T any](w http.ResponseWriter, value T, err error, success int
 }
 
 func actor(r *http.Request) string {
+	if principal, ok := auth.PrincipalFrom(r.Context()); ok {
+		if principal.Email != "" {
+			return principal.Email
+		}
+		return principal.Subject
+	}
 	if value := strings.TrimSpace(r.Header.Get("X-MLAIOps-Actor")); value != "" {
 		return value
 	}

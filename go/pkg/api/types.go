@@ -1,3 +1,4 @@
+// Package api contains the stable control-plane wire contracts.
 package api
 
 import "time"

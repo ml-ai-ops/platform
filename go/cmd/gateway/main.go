@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mlaiops/platform/internal/auth"
 	"github.com/mlaiops/platform/internal/httpapi"
 	"github.com/mlaiops/platform/internal/integrations"
 	"github.com/mlaiops/platform/internal/store"
@@ -52,7 +53,19 @@ func main() {
 		repository = store.New(dataPath)
 		log.Printf("using local file repository at %s", dataPath)
 	}
-	server := &http.Server{Addr: ":" + port, Handler: httpapi.New(repository, static), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second}
+	handler := httpapi.New(repository, static)
+	if issuer := os.Getenv("OIDC_ISSUER"); issuer != "" {
+		jwksURL := os.Getenv("OIDC_JWKS_URL")
+		if jwksURL == "" {
+			log.Fatal("OIDC_JWKS_URL is required when OIDC_ISSUER is configured")
+		}
+		verifier := auth.New(auth.Config{Issuer: issuer, Audience: os.Getenv("OIDC_AUDIENCE"), JWKSURL: jwksURL, Tenant: os.Getenv("MLAIOPS_TENANT")})
+		handler = verifier.Middleware(handler)
+		log.Printf("OIDC authentication enabled")
+	} else {
+		log.Printf("WARNING: OIDC authentication disabled; local development mode only")
+	}
+	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
