@@ -118,8 +118,33 @@ func (p *Postgres) SubmitPipeline(req api.SubmitPipelineRequest, actors ...strin
 		req.Name = "training-pipeline"
 	}
 	now := time.Now().UTC()
-	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: req.Name, Status: "queued", CreatedAt: now, UpdatedAt: now}
+	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: req.Name, Status: "queued", CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Run accepted by control plane"}}}
 	return run, p.write("pipeline_run", run.ID, run, "pipeline.submitted", first(actors), nil)
+}
+
+func (p *Postgres) Run(runID string) (api.PipelineRun, error) {
+	return get[api.PipelineRun](p, "pipeline_run", runID)
+}
+func (p *Postgres) CancelRun(runID, actor string) (api.PipelineRun, error) {
+	run, err := p.Run(runID)
+	if err != nil {
+		return run, err
+	}
+	if run.Status == "succeeded" || run.Status == "failed" {
+		return run, errors.New("completed runs cannot be cancelled")
+	}
+	run.Status, run.UpdatedAt = "cancelled", time.Now().UTC()
+	run.Logs = append(run.Logs, api.RunLog{Timestamp: run.UpdatedAt, Level: "warning", Message: "Run cancelled by " + actor})
+	return run, p.write("pipeline_run", run.ID, run, "pipeline.cancelled", actor, nil)
+}
+func (p *Postgres) RetryRun(runID, actor string) (api.PipelineRun, error) {
+	previous, err := p.Run(runID)
+	if err != nil {
+		return api.PipelineRun{}, err
+	}
+	now := time.Now().UTC()
+	run := api.PipelineRun{ID: id("run"), ProjectID: previous.ProjectID, Name: previous.Name, ParentRunID: previous.ID, Status: "queued", CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Retry created from " + previous.ID}}}
+	return run, p.write("pipeline_run", run.ID, run, "pipeline.retried", actor, map[string]any{"parent_run_id": previous.ID})
 }
 
 func (p *Postgres) RegisterModel(req api.RegisterModelRequest, actor string) (api.Model, error) {
@@ -134,7 +159,11 @@ func (p *Postgres) RegisterModel(req api.RegisterModelRequest, actor string) (ap
 			return api.Model{}, ErrConflict
 		}
 	}
-	model := api.Model{ID: id("mdl"), ProjectID: req.ProjectID, Name: req.Name, Version: req.Version, Stage: "candidate", ArtifactURI: req.ArtifactURI, Metrics: req.Metrics, CreatedAt: time.Now().UTC()}
+	gate := "passed"
+	if accuracy, ok := req.Metrics["accuracy"]; ok && accuracy < .8 {
+		gate = "failed"
+	}
+	model := api.Model{ID: id("mdl"), ProjectID: req.ProjectID, Name: req.Name, Version: req.Version, Stage: "candidate", ArtifactURI: req.ArtifactURI, Metrics: req.Metrics, GateStatus: gate, DeploymentStatus: "not_deployed", CreatedAt: time.Now().UTC()}
 	return model, p.write("model", model.ID, model, "model.registered", actor, nil)
 }
 
@@ -146,8 +175,38 @@ func (p *Postgres) PromoteModel(modelID, stage, actor string) (api.Model, error)
 	if err != nil {
 		return model, err
 	}
+	if stage == "production" && model.GateStatus == "failed" {
+		return model, errors.New("model evaluation gates have not passed")
+	}
+	model.PreviousStage = model.Stage
 	model.Stage = stage
 	return model, p.write("model", model.ID, model, "model.promoted", actor, map[string]any{"stage": stage})
+}
+
+func (p *Postgres) DeployModel(modelID string, weight int, actor string) (api.Model, error) {
+	if weight < 0 || weight > 100 {
+		return api.Model{}, errors.New("canary_weight must be between 0 and 100")
+	}
+	model, err := get[api.Model](p, "model", modelID)
+	if err != nil {
+		return model, err
+	}
+	if model.GateStatus != "passed" {
+		return model, errors.New("model evaluation gates have not passed")
+	}
+	model.DeploymentStatus, model.CanaryWeight, model.EndpointURL = "deploying", weight, "/v1/models/"+model.Name+":predict"
+	return model, p.write("model", model.ID, model, "model.deployed", actor, map[string]any{"canary_weight": weight})
+}
+func (p *Postgres) RollbackModel(modelID, actor string) (api.Model, error) {
+	model, err := get[api.Model](p, "model", modelID)
+	if err != nil {
+		return model, err
+	}
+	if model.PreviousStage == "" {
+		return model, errors.New("no previous stage is available")
+	}
+	model.Stage, model.PreviousStage, model.DeploymentStatus, model.CanaryWeight = model.PreviousStage, model.Stage, "rolled_back", 0
+	return model, p.write("model", model.ID, model, "model.rolled_back", actor, nil)
 }
 
 func (p *Postgres) DeployAgent(req api.DeployAgentRequest, actor string) (api.Agent, error) {
@@ -195,6 +254,58 @@ func (p *Postgres) CreateConnection(req api.CreateConnectionRequest, actor strin
 	}
 	connection := api.Connection{ID: id("conn"), Name: req.Name, Type: req.Type, Endpoint: req.Endpoint, SecretRef: req.SecretRef, Status: "pending", CreatedAt: time.Now().UTC()}
 	return connection, p.write("connection", connection.ID, connection, "connection.created", actor, nil)
+}
+
+func (p *Postgres) UpdateConnectionStatus(connectionID, status, message, actor string) (api.Connection, error) {
+	connection, err := get[api.Connection](p, "connection", connectionID)
+	if err != nil {
+		return connection, err
+	}
+	now := time.Now().UTC()
+	connection.Status, connection.Message, connection.CheckedAt = status, message, &now
+	return connection, p.write("connection", connection.ID, connection, "connection.checked", actor, map[string]any{"status": status})
+}
+func (p *Postgres) AgentSessions(agentID string) []api.AgentSession {
+	values := list[api.AgentSession](p, "agent_session")
+	result := []api.AgentSession{}
+	for _, value := range values {
+		if agentID == "" || value.AgentID == agentID {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+func (p *Postgres) AgentTraces(agentID string) []api.AgentTrace {
+	values := list[api.AgentTrace](p, "agent_trace")
+	result := []api.AgentTrace{}
+	for _, value := range values {
+		if agentID == "" || value.AgentID == agentID {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+func (p *Postgres) RecordTrace(req api.RecordTraceRequest) (api.AgentTrace, error) {
+	if req.AgentID == "" || req.SessionID == "" {
+		return api.AgentTrace{}, errors.New("agent_id and session_id are required")
+	}
+	now := time.Now().UTC()
+	trace := api.AgentTrace{ID: id("trace"), AgentID: req.AgentID, SessionID: req.SessionID, Name: req.Name, Status: req.Status, DurationMS: req.DurationMS, Tokens: req.InputTokens + req.OutputTokens, Metadata: req.Metadata, CreatedAt: now}
+	if err := p.write("agent_trace", trace.ID, trace, "agent.trace_recorded", "trace-proxy", nil); err != nil {
+		return trace, err
+	}
+	session, err := get[api.AgentSession](p, "agent_session", req.SessionID)
+	if errors.Is(err, ErrNotFound) {
+		session = api.AgentSession{ID: req.SessionID, AgentID: req.AgentID, UserID: req.UserID, StartedAt: now}
+	} else if err != nil {
+		return trace, err
+	}
+	session.Status, session.CurrentNode, session.UpdatedAt = req.Status, req.CurrentNode, now
+	session.Turns++
+	session.InputTokens += req.InputTokens
+	session.OutputTokens += req.OutputTokens
+	session.CostUSD += req.CostUSD
+	return trace, p.write("agent_session", session.ID, session, "agent.session_updated", "trace-proxy", nil)
 }
 
 func (p *Postgres) write(kind, resourceID string, value any, action, actor string, metadata map[string]any) error {

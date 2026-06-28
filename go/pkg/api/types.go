@@ -20,13 +20,31 @@ type CreateProjectRequest struct {
 }
 
 type PipelineRun struct {
-	ID        string    `json:"id"`
-	ProjectID string    `json:"project_id"`
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	Progress  int       `json:"progress"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          string         `json:"id"`
+	ProjectID   string         `json:"project_id"`
+	Name        string         `json:"name"`
+	Status      string         `json:"status"`
+	Progress    int            `json:"progress"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	ParentRunID string         `json:"parent_run_id,omitempty"`
+	Steps       []PipelineStep `json:"steps"`
+	Logs        []RunLog       `json:"logs,omitempty"`
+}
+
+type PipelineStep struct {
+	Name      string   `json:"name"`
+	Status    string   `json:"status"`
+	Image     string   `json:"image"`
+	DependsOn []string `json:"depends_on,omitempty"`
+	Progress  int      `json:"progress"`
+}
+
+type RunLog struct {
+	Timestamp time.Time `json:"timestamp"`
+	Step      string    `json:"step"`
+	Level     string    `json:"level"`
+	Message   string    `json:"message"`
 }
 
 type SubmitPipelineRequest struct {
@@ -43,14 +61,19 @@ type Component struct {
 }
 
 type Model struct {
-	ID          string             `json:"id"`
-	ProjectID   string             `json:"project_id"`
-	Name        string             `json:"name"`
-	Version     string             `json:"version"`
-	Stage       string             `json:"stage"`
-	ArtifactURI string             `json:"artifact_uri"`
-	Metrics     map[string]float64 `json:"metrics"`
-	CreatedAt   time.Time          `json:"created_at"`
+	ID               string             `json:"id"`
+	ProjectID        string             `json:"project_id"`
+	Name             string             `json:"name"`
+	Version          string             `json:"version"`
+	Stage            string             `json:"stage"`
+	ArtifactURI      string             `json:"artifact_uri"`
+	Metrics          map[string]float64 `json:"metrics"`
+	CreatedAt        time.Time          `json:"created_at"`
+	GateStatus       string             `json:"gate_status"`
+	DeploymentStatus string             `json:"deployment_status"`
+	CanaryWeight     int                `json:"canary_weight"`
+	EndpointURL      string             `json:"endpoint_url,omitempty"`
+	PreviousStage    string             `json:"previous_stage,omitempty"`
 }
 
 type RegisterModelRequest struct {
@@ -63,6 +86,10 @@ type RegisterModelRequest struct {
 
 type PromoteModelRequest struct {
 	Stage string `json:"stage"`
+}
+
+type DeployModelRequest struct {
+	CanaryWeight int `json:"canary_weight"`
 }
 
 type Agent struct {
@@ -115,13 +142,15 @@ type RegisterToolRequest struct {
 }
 
 type Connection struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"`
-	Endpoint  string    `json:"endpoint"`
-	SecretRef string    `json:"secret_ref"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Type      string     `json:"type"`
+	Endpoint  string     `json:"endpoint"`
+	SecretRef string     `json:"secret_ref"`
+	Status    string     `json:"status"`
+	CreatedAt time.Time  `json:"created_at"`
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
+	Message   string     `json:"message,omitempty"`
 }
 
 type CreateConnectionRequest struct {
@@ -129,6 +158,68 @@ type CreateConnectionRequest struct {
 	Type      string `json:"type"`
 	Endpoint  string `json:"endpoint"`
 	SecretRef string `json:"secret_ref"`
+}
+
+type ReadinessItem struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Status      string `json:"status"`
+	Description string `json:"description"`
+	Action      string `json:"action,omitempty"`
+}
+
+type Readiness struct {
+	Percent int             `json:"percent"`
+	Ready   bool            `json:"ready"`
+	Items   []ReadinessItem `json:"items"`
+}
+
+type AgentSession struct {
+	ID           string    `json:"id"`
+	AgentID      string    `json:"agent_id"`
+	UserID       string    `json:"user_id"`
+	Status       string    `json:"status"`
+	CurrentNode  string    `json:"current_node"`
+	Turns        int       `json:"turns"`
+	InputTokens  int       `json:"input_tokens"`
+	OutputTokens int       `json:"output_tokens"`
+	CostUSD      float64   `json:"cost_usd"`
+	StartedAt    time.Time `json:"started_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type AgentTrace struct {
+	ID         string         `json:"id"`
+	AgentID    string         `json:"agent_id"`
+	SessionID  string         `json:"session_id"`
+	Name       string         `json:"name"`
+	Status     string         `json:"status"`
+	DurationMS int64          `json:"duration_ms"`
+	Tokens     int            `json:"tokens"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+}
+
+type RecordTraceRequest struct {
+	AgentID      string         `json:"agent_id"`
+	SessionID    string         `json:"session_id"`
+	UserID       string         `json:"user_id"`
+	Name         string         `json:"name"`
+	Status       string         `json:"status"`
+	CurrentNode  string         `json:"current_node"`
+	DurationMS   int64          `json:"duration_ms"`
+	InputTokens  int            `json:"input_tokens"`
+	OutputTokens int            `json:"output_tokens"`
+	CostUSD      float64        `json:"cost_usd"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+}
+
+type AgentUsage struct {
+	Sessions     int     `json:"sessions"`
+	Active       int     `json:"active"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
 }
 
 type AuditEvent struct {

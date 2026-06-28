@@ -17,13 +17,15 @@ var ErrNotFound = errors.New("resource not found")
 var ErrConflict = errors.New("resource already exists")
 
 type state struct {
-	Projects    []api.Project     `json:"projects"`
-	Runs        []api.PipelineRun `json:"runs"`
-	Models      []api.Model       `json:"models"`
-	Agents      []api.Agent       `json:"agents"`
-	Tools       []api.Tool        `json:"tools"`
-	Connections []api.Connection  `json:"connections"`
-	Audit       []api.AuditEvent  `json:"audit"`
+	Projects    []api.Project      `json:"projects"`
+	Runs        []api.PipelineRun  `json:"runs"`
+	Models      []api.Model        `json:"models"`
+	Agents      []api.Agent        `json:"agents"`
+	Tools       []api.Tool         `json:"tools"`
+	Connections []api.Connection   `json:"connections"`
+	Audit       []api.AuditEvent   `json:"audit"`
+	Sessions    []api.AgentSession `json:"sessions"`
+	Traces      []api.AgentTrace   `json:"traces"`
 }
 
 type Store struct {
@@ -43,7 +45,7 @@ func New(path ...string) *Store {
 	if len(s.data.Projects) == 0 {
 		now := time.Now().UTC()
 		s.data.Projects = []api.Project{{ID: "prj-demo", Name: "Fraud detection starter", Description: "A guided tabular ML project", Template: "tabular-classification", Namespace: "team-demo", Status: "ready", CreatedAt: now}}
-		s.data.Runs = []api.PipelineRun{{ID: "run-demo", ProjectID: "prj-demo", Name: "training-pipeline", Status: "succeeded", Progress: 100, CreatedAt: now, UpdatedAt: now}}
+		s.data.Runs = []api.PipelineRun{{ID: "run-demo", ProjectID: "prj-demo", Name: "training-pipeline", Status: "succeeded", Progress: 100, CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("succeeded")}}
 		_ = s.persist()
 	}
 	return s
@@ -104,10 +106,53 @@ func (s *Store) SubmitPipeline(req api.SubmitPipelineRequest, actor ...string) (
 		req.Name = "training-pipeline"
 	}
 	now := time.Now().UTC()
-	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: strings.TrimSpace(req.Name), Status: "queued", Progress: 0, CreatedAt: now, UpdatedAt: now}
+	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: strings.TrimSpace(req.Name), Status: "queued", Progress: 0, CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Run accepted by control plane"}}}
 	s.data.Runs = append([]api.PipelineRun{run}, s.data.Runs...)
 	s.record("pipeline.submitted", "pipeline_run", run.ID, first(actor), nil)
 	return run, s.persist()
+}
+
+func (s *Store) Run(runID string) (api.PipelineRun, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, run := range s.data.Runs {
+		if run.ID == runID {
+			return run, nil
+		}
+	}
+	return api.PipelineRun{}, ErrNotFound
+}
+
+func (s *Store) CancelRun(runID, actor string) (api.PipelineRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Runs {
+		if s.data.Runs[i].ID == runID {
+			if s.data.Runs[i].Status == "succeeded" || s.data.Runs[i].Status == "failed" {
+				return api.PipelineRun{}, errors.New("completed runs cannot be cancelled")
+			}
+			s.data.Runs[i].Status, s.data.Runs[i].UpdatedAt = "cancelled", time.Now().UTC()
+			s.data.Runs[i].Logs = append(s.data.Runs[i].Logs, api.RunLog{Timestamp: time.Now().UTC(), Level: "warning", Message: "Run cancelled by " + actor})
+			s.record("pipeline.cancelled", "pipeline_run", runID, actor, nil)
+			return s.data.Runs[i], s.persist()
+		}
+	}
+	return api.PipelineRun{}, ErrNotFound
+}
+
+func (s *Store) RetryRun(runID, actor string) (api.PipelineRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, previous := range s.data.Runs {
+		if previous.ID == runID {
+			now := time.Now().UTC()
+			run := api.PipelineRun{ID: id("run"), ProjectID: previous.ProjectID, Name: previous.Name, ParentRunID: previous.ID, Status: "queued", CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Retry created from " + previous.ID}}}
+			s.data.Runs = append([]api.PipelineRun{run}, s.data.Runs...)
+			s.record("pipeline.retried", "pipeline_run", run.ID, actor, map[string]any{"parent_run_id": previous.ID})
+			return run, s.persist()
+		}
+	}
+	return api.PipelineRun{}, ErrNotFound
 }
 
 func (s *Store) RegisterModel(req api.RegisterModelRequest, actor string) (api.Model, error) {
@@ -124,7 +169,11 @@ func (s *Store) RegisterModel(req api.RegisterModelRequest, actor string) (api.M
 			return api.Model{}, ErrConflict
 		}
 	}
-	m := api.Model{ID: id("mdl"), ProjectID: req.ProjectID, Name: req.Name, Version: req.Version, Stage: "candidate", ArtifactURI: req.ArtifactURI, Metrics: req.Metrics, CreatedAt: time.Now().UTC()}
+	gate := "passed"
+	if accuracy, ok := req.Metrics["accuracy"]; ok && accuracy < .8 {
+		gate = "failed"
+	}
+	m := api.Model{ID: id("mdl"), ProjectID: req.ProjectID, Name: req.Name, Version: req.Version, Stage: "candidate", ArtifactURI: req.ArtifactURI, Metrics: req.Metrics, GateStatus: gate, DeploymentStatus: "not_deployed", CreatedAt: time.Now().UTC()}
 	s.data.Models = append([]api.Model{m}, s.data.Models...)
 	s.record("model.registered", "model", m.ID, actor, nil)
 	return m, s.persist()
@@ -139,8 +188,49 @@ func (s *Store) PromoteModel(modelID, stage, actor string) (api.Model, error) {
 	defer s.mu.Unlock()
 	for i := range s.data.Models {
 		if s.data.Models[i].ID == modelID {
+			if stage == "production" && s.data.Models[i].GateStatus == "failed" {
+				return api.Model{}, errors.New("model evaluation gates have not passed")
+			}
+			s.data.Models[i].PreviousStage = s.data.Models[i].Stage
 			s.data.Models[i].Stage = stage
 			s.record("model.promoted", "model", modelID, actor, map[string]any{"stage": stage})
+			return s.data.Models[i], s.persist()
+		}
+	}
+	return api.Model{}, ErrNotFound
+}
+
+func (s *Store) DeployModel(modelID string, weight int, actor string) (api.Model, error) {
+	if weight < 0 || weight > 100 {
+		return api.Model{}, errors.New("canary_weight must be between 0 and 100")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Models {
+		if s.data.Models[i].ID == modelID {
+			if s.data.Models[i].GateStatus != "passed" {
+				return api.Model{}, errors.New("model evaluation gates have not passed")
+			}
+			s.data.Models[i].DeploymentStatus, s.data.Models[i].CanaryWeight = "deploying", weight
+			s.data.Models[i].EndpointURL = "/v1/models/" + s.data.Models[i].Name + ":predict"
+			s.record("model.deployed", "model", modelID, actor, map[string]any{"canary_weight": weight})
+			return s.data.Models[i], s.persist()
+		}
+	}
+	return api.Model{}, ErrNotFound
+}
+
+func (s *Store) RollbackModel(modelID, actor string) (api.Model, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Models {
+		if s.data.Models[i].ID == modelID {
+			if s.data.Models[i].PreviousStage == "" {
+				return api.Model{}, errors.New("no previous stage is available")
+			}
+			s.data.Models[i].Stage, s.data.Models[i].PreviousStage = s.data.Models[i].PreviousStage, s.data.Models[i].Stage
+			s.data.Models[i].DeploymentStatus, s.data.Models[i].CanaryWeight = "rolled_back", 0
+			s.record("model.rolled_back", "model", modelID, actor, nil)
 			return s.data.Models[i], s.persist()
 		}
 	}
@@ -163,6 +253,68 @@ func (s *Store) DeployAgent(req api.DeployAgentRequest, actor string) (api.Agent
 	s.data.Agents = append([]api.Agent{a}, s.data.Agents...)
 	s.record("agent.deployed", "agent", a.ID, actor, nil)
 	return a, s.persist()
+}
+
+func (s *Store) UpdateConnectionStatus(connectionID, status, message, actor string) (api.Connection, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Connections {
+		if s.data.Connections[i].ID == connectionID {
+			now := time.Now().UTC()
+			s.data.Connections[i].Status, s.data.Connections[i].Message, s.data.Connections[i].CheckedAt = status, message, &now
+			s.record("connection.checked", "connection", connectionID, actor, map[string]any{"status": status})
+			return s.data.Connections[i], s.persist()
+		}
+	}
+	return api.Connection{}, ErrNotFound
+}
+
+func (s *Store) AgentSessions(agentID string) []api.AgentSession {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := []api.AgentSession{}
+	for _, session := range s.data.Sessions {
+		if session.AgentID == agentID || agentID == "" {
+			result = append(result, session)
+		}
+	}
+	return result
+}
+func (s *Store) AgentTraces(agentID string) []api.AgentTrace {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := []api.AgentTrace{}
+	for _, trace := range s.data.Traces {
+		if trace.AgentID == agentID || agentID == "" {
+			result = append(result, trace)
+		}
+	}
+	return result
+}
+func (s *Store) RecordTrace(req api.RecordTraceRequest) (api.AgentTrace, error) {
+	if req.AgentID == "" || req.SessionID == "" {
+		return api.AgentTrace{}, errors.New("agent_id and session_id are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	trace := api.AgentTrace{ID: id("trace"), AgentID: req.AgentID, SessionID: req.SessionID, Name: req.Name, Status: req.Status, DurationMS: req.DurationMS, Tokens: req.InputTokens + req.OutputTokens, Metadata: req.Metadata, CreatedAt: now}
+	s.data.Traces = append([]api.AgentTrace{trace}, s.data.Traces...)
+	found := false
+	for i := range s.data.Sessions {
+		if s.data.Sessions[i].ID == req.SessionID {
+			s.data.Sessions[i].CurrentNode, s.data.Sessions[i].Status, s.data.Sessions[i].UpdatedAt = req.CurrentNode, req.Status, now
+			s.data.Sessions[i].Turns++
+			s.data.Sessions[i].InputTokens += req.InputTokens
+			s.data.Sessions[i].OutputTokens += req.OutputTokens
+			s.data.Sessions[i].CostUSD += req.CostUSD
+			found = true
+		}
+	}
+	if !found {
+		s.data.Sessions = append([]api.AgentSession{{ID: req.SessionID, AgentID: req.AgentID, UserID: req.UserID, Status: req.Status, CurrentNode: req.CurrentNode, Turns: 1, InputTokens: req.InputTokens, OutputTokens: req.OutputTokens, CostUSD: req.CostUSD, StartedAt: now, UpdatedAt: now}}, s.data.Sessions...)
+	}
+	return trace, s.persist()
 }
 
 func (s *Store) SetAgentTraffic(agentID string, weight int, actor string) (api.Agent, error) {
@@ -281,4 +433,14 @@ func slug(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+func defaultSteps(status string) []api.PipelineStep {
+	steps := []api.PipelineStep{{Name: "validate-data", Status: status, Image: "mlaiops/data-validator:latest", Progress: 0}, {Name: "train-model", Status: status, Image: "mlaiops/trainer:latest", DependsOn: []string{"validate-data"}, Progress: 0}, {Name: "evaluate", Status: status, Image: "mlaiops/evaluator:latest", DependsOn: []string{"train-model"}, Progress: 0}}
+	if status == "succeeded" {
+		for i := range steps {
+			steps[i].Progress = 100
+		}
+	}
+	return steps
 }
