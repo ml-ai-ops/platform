@@ -18,6 +18,11 @@ infrastructure services and Python owns the ML-facing SDK and workload primitive
 - OIDC/JWKS authentication with tenant and role enforcement
 - Leader-elected Kubernetes controllers for agents, pipelines, models and KServe deployment
 - Kafka lifecycle worker translating durable commands into Nexus CRDs
+- Guided onboarding with active infrastructure checks and readiness scoring
+- Pipeline DAG/log inspection, cancellation, retry and run lineage
+- Quality-gated model promotion, canary deployment and rollback
+- Agent sessions, traces, tools, token usage and cost aggregation
+- Dex, Vault, CloudNativePG backup and scoped NetworkPolicy assets
 - Typed Python SDK, pipeline compiler, tool registry, and tracing primitive
 - Single-binary CLI for common platform operations
 - Container and Kubernetes deployment assets

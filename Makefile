@@ -1,4 +1,4 @@
-.PHONY: install run test test-go test-python test-integration test-load lint format build verify local-up local-down kind-up
+.PHONY: install run test test-go test-python test-integration test-load test-e2e lint format build verify local-up local-down kind-up
 
 install:
 	python -m pip install -r requirements.txt
@@ -20,6 +20,9 @@ test-integration:
 
 test-load:
 	k6 run tests/load/gateway.js
+
+test-e2e:
+	bash scripts/e2e-kind.sh
 
 lint:
 	cd go && go vet ./...

@@ -32,15 +32,17 @@ Kafka outbox entries in one transaction. Local file mode remains available throu
 | Resource | Operations |
 |---|---|
 | Projects | create, list |
-| Pipelines | submit, list runs |
-| Models | register, list, promote |
-| Agents | deploy, list, set canary traffic |
+| Pipelines | submit, inspect DAG/logs, cancel, retry, compare parent runs |
+| Models | register, evaluate gates, promote, deploy canary, rollback |
+| Agents | deploy, list, set traffic, sessions, traces, token/cost usage |
 | Tools | register typed schema, list |
 | Connections | create secret reference, list |
 | Audit | ordered event list |
 
 Set `X-MLAIOps-Actor` on mutation requests for audit attribution. Secrets are represented only
 by Kubernetes Secret references; raw credentials are never accepted by the control-plane API.
+Connection onboarding performs bounded HTTP health checks and calculates readiness exclusively
+from tested infrastructure state.
 
 ## Integration contracts
 
@@ -87,14 +89,14 @@ make local-up          # PostgreSQL, Redis, Kafka, MinIO, MLflow, gateway
 make test-integration  # PostgreSQL transaction and outbox verification
 make kind-up           # three-node Kind cluster, CRDs and core operators
 make test-load         # k6 gateway SLO workload
+make test-e2e          # CRD → operator → Deployment/Service Kind test
 ```
 
 ## Remaining environment gates
 
 Before production rollout:
 
-1. Configure PostgreSQL row-level security policies for each organization's tenant model.
-2. Connect Dex claims to the organization-specific role and namespace mapping.
-3. Inject storage and integration credentials through Vault.
-4. Install and pin KFP, KServe, Langfuse and the chosen S3 implementation per environment.
-5. Run recovery and security tests against the target production cluster and storage classes.
+1. Replace the example Dex GitHub organization and hostnames with environment values.
+2. Provision Vault roles/policies and referenced Kubernetes Secrets.
+3. Install and pin KFP, KServe, Langfuse and the chosen S3 implementation per environment.
+4. Run recovery and security tests against the target production cluster and storage classes.

@@ -22,6 +22,8 @@
         <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
         <button class="nav-item" data-view="projects"><span>◇</span> Projects</button>
         <button class="nav-item" data-view="pipelines"><span>↯</span> Pipelines</button>
+        <button class="nav-item" data-view="models"><span>◉</span> Models</button>
+        <button class="nav-item" data-view="agents"><span>✦</span> Agents</button>
         <button class="nav-item" data-view="catalog"><span>▦</span> Catalog</button>
         <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
       </nav>
@@ -70,8 +72,10 @@
 
       <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Your projects</h2><p>Each project gets a clear path from exploration to production.</p></div></div><div id="project-grid" class="card-grid"></div></section>
       <section id="pipelines" class="view"><div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>One place to understand every experiment and production workflow.</p></div></div><div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div></section>
+      <section id="models" class="view"><div class="section-heading"><div><p class="eyebrow">MODEL LIFECYCLE</p><h2>Registry and deployments</h2><p>Evaluation gates, promotion, canary traffic and rollback in one place.</p></div></div><div id="model-grid" class="card-grid"></div></section>
+      <section id="agents" class="view"><div class="section-heading"><div><p class="eyebrow">AGENT OPERATIONS</p><h2>Agents and live sessions</h2><p>Deployments, tools, traces, token usage and cost.</p></div></div><div id="agent-summary" class="stat-grid"></div><div id="agent-grid" class="card-grid"></div><div class="panel table-wrap agent-traces"><table><thead><tr><th>Session</th><th>Agent</th><th>Node</th><th>Status</th><th>Turns</th><th>Tokens</th><th>Cost</th></tr></thead><tbody id="session-table"></tbody></table></div></section>
       <section id="catalog" class="view"><div class="section-heading"><div><p class="eyebrow">DISCOVERABILITY</p><h2>Shared catalog</h2><p>Models, features, agents, and tools—searchable and understandable.</p></div><div class="filters"><button class="active" data-kind="">All</button><button data-kind="model">Models</button><button data-kind="feature">Features</button><button data-kind="agent">Agents</button><button data-kind="tool">Tools</button></div></div><div id="catalog-grid" class="card-grid"></div></section>
-      <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Connect each production service when you are ready.</p></div></div><div id="component-grid" class="component-grid"></div></section>
+      <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
     </main>
   </div>
 
@@ -85,6 +89,18 @@
       <p class="form-error" id="form-error"></p><button class="primary submit" type="submit">Create project →</button>
     </form>
   </dialog>
+  <dialog id="connection-dialog">
+    <form id="connection-form">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">CONNECT SERVICE</p><h2>Add infrastructure</h2><p>Nexus stores only a Kubernetes Secret reference, never raw credentials.</p>
+      <label>Service<select name="type"><option value="kubernetes">Kubernetes</option><option value="mlflow">MLflow</option><option value="s3">S3 / MinIO</option><option value="kafka">Kafka REST</option><option value="langfuse">Langfuse</option></select></label>
+      <label>Connection name<input name="name" required placeholder="e.g. production-mlflow"></label>
+      <label>Health endpoint<input name="endpoint" required type="url" placeholder="https://mlflow.example.com/health"></label>
+      <label>Kubernetes Secret<input name="secret_ref" required placeholder="mlflow-credentials"></label>
+      <p class="form-error" id="connection-error"></p><button class="primary submit" type="submit">Save and test</button>
+    </form>
+  </dialog>
+  <dialog id="run-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="run-detail"></div></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
 </body>
