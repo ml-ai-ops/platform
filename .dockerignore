@@ -1,0 +1,10 @@
+.git
+.pytest_cache
+.venv
+bin
+data
+htmlcov
+notebooks
+**/__pycache__
+*.pyc
+*.log

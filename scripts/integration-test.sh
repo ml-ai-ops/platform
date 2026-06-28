@@ -2,12 +2,13 @@
 set -euo pipefail
 
 export POSTGRES_PORT="${TEST_POSTGRES_PORT:-55432}"
-docker compose -f deploy/compose.yaml down --remove-orphans >/dev/null 2>&1 || true
-cleanup() { docker compose -f deploy/compose.yaml down --remove-orphans >/dev/null 2>&1 || true; }
+compose=(docker compose -p mlaiops-test -f deploy/compose.yaml)
+"${compose[@]}" down --remove-orphans >/dev/null 2>&1 || true
+cleanup() { "${compose[@]}" down --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT
-docker compose -f deploy/compose.yaml up -d postgres
+"${compose[@]}" up -d postgres
 for _ in $(seq 1 30); do
-  docker compose -f deploy/compose.yaml exec -T postgres pg_isready -U mlaiops && break
+  "${compose[@]}" exec -T postgres pg_isready -U mlaiops && break
   sleep 1
 done
 
