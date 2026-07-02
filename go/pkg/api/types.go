@@ -214,6 +214,12 @@ type RecordTraceRequest struct {
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
+type InvokeAgentRequest struct {
+	Message   string `json:"message"`
+	SessionID string `json:"session_id,omitempty"`
+	UserID    string `json:"user_id,omitempty"`
+}
+
 type AgentUsage struct {
 	Sessions     int     `json:"sessions"`
 	Active       int     `json:"active"`

@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -44,6 +47,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/agents", server.agents)
 	mux.HandleFunc("POST /api/v1/agents", server.deployAgent)
 	mux.HandleFunc("PUT /api/v1/agents/{id}/traffic", server.agentTraffic)
+	mux.HandleFunc("POST /api/v1/agents/{id}/invoke", server.invokeAgent)
 	mux.HandleFunc("GET /api/v1/agents/{id}/sessions", server.agentSessions)
 	mux.HandleFunc("GET /api/v1/agents/{id}/traces", server.agentTraces)
 	mux.HandleFunc("GET /api/v1/agents/{id}/usage", server.agentUsage)
@@ -253,6 +257,57 @@ func (s *Server) agentTraffic(w http.ResponseWriter, r *http.Request) {
 	item, err := s.store.SetAgentTraffic(r.PathValue("id"), req.CanaryWeight, actor(r))
 	writeMutation(w, item, err, http.StatusOK)
 }
+// invokeAgent proxies a test-console or SDK turn to the agent runtime, which
+// executes the LangGraph graph and reports the session back through
+// POST /api/v1/traces. The runtime address comes from AGENT_RUNTIME_URL.
+func (s *Server) invokeAgent(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("id")
+	var agent *api.Agent
+	for _, item := range s.store.Agents() {
+		if item.ID == agentID {
+			value := item
+			agent = &value
+			break
+		}
+	}
+	if agent == nil {
+		writeError(w, http.StatusNotFound, "not_found", "agent not found")
+		return
+	}
+	var req api.InvokeAgentRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		writeError(w, http.StatusUnprocessableEntity, "validation_error", "message is required")
+		return
+	}
+	runtime := os.Getenv("AGENT_RUNTIME_URL")
+	if runtime == "" {
+		runtime = "http://localhost:9000"
+	}
+	body, _ := json.Marshal(req)
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(runtime, "/")+"/invoke", bytes.NewReader(body))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "runtime_unreachable", err.Error())
+		return
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-MLAIOps-Agent-ID", agent.ID)
+	request.Header.Set("X-MLAIOps-Agent-Name", agent.Name)
+	client := &http.Client{Timeout: 120 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "runtime_unreachable", err.Error())
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, _ = io.Copy(w, response.Body)
+}
+
 func (s *Server) agentSessions(w http.ResponseWriter, r *http.Request) {
 	items := s.store.AgentSessions(r.PathValue("id"))
 	writeJSON(w, http.StatusOK, api.Page[api.AgentSession]{Items: items, Total: len(items)})

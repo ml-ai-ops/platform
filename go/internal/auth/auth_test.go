@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -34,7 +35,7 @@ func TestVerifierAndRBAC(t *testing.T) {
 	token.Header["kid"] = "key-1"
 	raw, _ := token.SignedString(privateKey)
 	verifier := New(Config{Issuer: "https://issuer.example", Audience: "mlaiops", JWKSURL: jwks.URL, Tenant: "team-a"})
-	principal, err := verifier.Verify(t.Context(), raw)
+	principal, err := verifier.Verify(context.Background(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}
