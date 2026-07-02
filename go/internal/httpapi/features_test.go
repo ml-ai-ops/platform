@@ -48,6 +48,17 @@ func TestFeatureViewApplyListMaterialize(t *testing.T) {
 	}
 }
 
+func TestEmptyListsSerializeAsArrays(t *testing.T) {
+	server := testServer()
+	for _, path := range []string{"/api/v1/features", "/api/v1/models", "/api/v1/tools", "/api/v1/connections"} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if strings.Contains(response.Body.String(), `"items":null`) {
+			t.Fatalf("%s serializes empty list as null: %s", path, response.Body.String())
+		}
+	}
+}
+
 func TestMaterializeUnknownViewIs404(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/features/missing/materialized", strings.NewReader(`{"entity_count":1}`))
 	response := httptest.NewRecorder()

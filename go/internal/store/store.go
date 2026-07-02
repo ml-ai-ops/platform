@@ -579,7 +579,9 @@ func (s *Store) record(action, resource, resourceID, actor string, metadata map[
 	s.data.Audit = append([]api.AuditEvent{event}, s.data.Audit...)
 }
 
-func clone[T any](values []T) []T { return append([]T(nil), values...) }
+// clone always returns a non-nil slice so list endpoints serialize as [] —
+// never null — regardless of state.
+func clone[T any](values []T) []T { return append([]T{}, values...) }
 func hasProject(values []api.Project, id string) bool {
 	for _, v := range values {
 		if v.ID == id {

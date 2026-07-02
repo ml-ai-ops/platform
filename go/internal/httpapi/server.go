@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -52,6 +53,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/storage/objects", server.storageProxy("/objects"))
 	mux.HandleFunc("GET /api/v1/storage/object", server.storageProxy("/object"))
 	mux.HandleFunc("GET /api/v1/prompts", server.prompts)
+	mux.HandleFunc("GET /api/v1/events", server.events)
 	mux.HandleFunc("GET /api/v1/realtime", server.realtimeStats)
 	mux.HandleFunc("POST /api/v1/realtime/{demo}", server.reportRealtime)
 	mux.HandleFunc("GET /api/v1/functions", server.functions)
@@ -342,6 +344,89 @@ func (s *Server) prompts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "items": payload.Data})
+}
+
+// events streams a live state digest as Server-Sent Events so the console
+// updates without polling storms. The digest carries enough for the client to
+// know *what* changed; panels re-fetch their own data when it does.
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming_unsupported", "response writer cannot stream")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	send := func() bool {
+		digest := s.digest()
+		raw, err := json.Marshal(digest)
+		if err != nil {
+			return false
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", raw); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	if !send() {
+		return
+	}
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			if !send() {
+				return
+			}
+		}
+	}
+}
+
+// digest summarizes mutable state cheaply; identical digests mean no refresh.
+func (s *Server) digest() map[string]any {
+	runs := s.store.Runs()
+	latestRun := ""
+	active := 0
+	for _, run := range runs {
+		if run.UpdatedAt.Format(time.RFC3339Nano) > latestRun {
+			latestRun = run.UpdatedAt.Format(time.RFC3339Nano)
+		}
+		if run.Status == "running" || run.Status == "queued" {
+			active++
+		}
+	}
+	sessions := s.store.AgentSessions("")
+	latestSession := ""
+	for _, session := range sessions {
+		if session.UpdatedAt.Format(time.RFC3339Nano) > latestSession {
+			latestSession = session.UpdatedAt.Format(time.RFC3339Nano)
+		}
+	}
+	s.realtimeMu.RLock()
+	realtimeEvents := 0.0
+	for _, stats := range s.realtime {
+		if events, ok := stats["events"].(float64); ok {
+			realtimeEvents += events
+		}
+	}
+	s.realtimeMu.RUnlock()
+	return map[string]any{
+		"runs":            len(runs),
+		"active_runs":     active,
+		"latest_run":      latestRun,
+		"sessions":        len(sessions),
+		"latest_session":  latestSession,
+		"models":          len(s.store.Models()),
+		"agents":          len(s.store.Agents()),
+		"connections":     len(s.store.Connections()),
+		"features":        len(s.store.FeatureViews()),
+		"realtime_events": realtimeEvents,
+	}
 }
 
 // realtimeStats exposes the live stream-processing statistics reported by the

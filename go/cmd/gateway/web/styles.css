@@ -394,3 +394,60 @@ textarea { min-height: 72px; resize: vertical; }
   .filters { margin-top:13px; overflow-x:auto; }
   .platform-layout,.connection-grid { grid-template-columns:1fr; }
 }
+
+/* ---- Phase 4 console additions ------------------------------------------ */
+
+/* Pipeline DAG (SVG) */
+.dag-svg { width: 100%; max-height: 320px; margin: 8px 0 4px; }
+.dag-node { fill: var(--surface-strong); stroke: var(--line); stroke-width: 1; }
+.dag-edge { fill: none; stroke: rgba(60,60,67,.28); stroke-width: 1.5; }
+.dag-name { font: 600 12px -apple-system, sans-serif; fill: var(--text); }
+.dag-status { font: 500 10px -apple-system, sans-serif; fill: var(--tertiary); }
+
+/* Experiment portal chart */
+.chart-panel { margin-bottom: 18px; }
+.chart-panel canvas { width: 100%; display: block; }
+.chart-panel select { border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; font-size: 12px; background: var(--surface-strong); }
+
+/* Feature catalog */
+#feature-search { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; font-size: 13px; min-width: 230px; background: var(--surface-strong); }
+.feature-card .schema { width: 100%; margin: 9px 0; border-collapse: collapse; font-size: 12px; }
+.feature-card .schema th { text-align: left; color: var(--tertiary); font-weight: 600; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--line); }
+.feature-card .schema td { padding: 4px 8px 4px 0; border-bottom: 1px solid rgba(60,60,67,.07); font-family: ui-monospace, monospace; }
+
+/* Storage explorer */
+.storage-browser { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
+.storage-row { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 8px 11px; border: 1px solid transparent; border-radius: 9px; background: transparent; font-size: 13px; cursor: pointer; }
+.storage-row:hover { background: rgba(0,113,227,.06); border-color: var(--line); }
+.storage-row b { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storage-row small { color: var(--tertiary); }
+.object-preview { max-height: 340px; overflow: auto; }
+code { font-family: ui-monospace, monospace; font-size: 11.5px; background: rgba(60,60,67,.07); padding: 2px 6px; border-radius: 6px; }
+
+/* Real-time panel */
+.realtime-grid { margin-bottom: 18px; }
+.hint { background: rgba(60,60,67,.06); border: 1px solid var(--line); border-radius: 10px; padding: 12px 15px; font: 12px ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+
+/* Prompt library */
+.prompt-list { display: flex; flex-direction: column; gap: 7px; }
+.prompt-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; background: var(--surface-strong); }
+.prompt-row b { flex: 1; font-weight: 600; }
+
+/* Agent chat console */
+.chat-sheet { display: flex; flex-direction: column; min-width: min(560px, 88vw); }
+.chat-log { flex: 1; min-height: 220px; max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
+.chat-turn { max-width: 86%; padding: 9px 13px; border-radius: 14px; font-size: 13.5px; }
+.chat-turn span { display: block; font-size: 10.5px; font-weight: 600; color: var(--tertiary); margin-bottom: 3px; }
+.chat-turn p { margin: 0; white-space: pre-wrap; }
+.chat-turn.user { align-self: flex-end; background: var(--blue); color: #fff; }
+.chat-turn.user span { color: rgba(255,255,255,.75); }
+.chat-turn.agent { align-self: flex-start; background: rgba(60,60,67,.08); }
+.chat-turn.agent.failed { background: rgba(255,69,58,.12); }
+.chat-turn.pending p { color: var(--tertiary); }
+#chat-form { display: flex; gap: 9px; }
+#chat-form input { flex: 1; border: 1px solid var(--line); border-radius: 11px; padding: 10px 13px; font-size: 13.5px; }
+
+/* Misc */
+.tag.live { color: #1d7d3f; background: rgba(48,209,88,.15); }
+#predict-input { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
+#predict-output:empty { display: none; }

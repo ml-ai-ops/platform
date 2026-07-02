@@ -12,7 +12,7 @@
     <b>Nexus</b>
     <button>File</button><button>Edit</button><button>View</button><button>Run</button><button>Window</button><button>Help</button>
     <span class="menu-spacer"></span>
-    <span class="menu-status">●&nbsp; Local Cluster&nbsp;&nbsp; 09:41</span>
+    <span class="menu-status" id="live-indicator">●&nbsp; Local Cluster&nbsp;&nbsp; live</span>
   </div>
   <div class="shell">
     <aside>
@@ -24,6 +24,9 @@
         <button class="nav-item" data-view="pipelines"><span>↯</span> Pipelines</button>
         <button class="nav-item" data-view="models"><span>◉</span> Models</button>
         <button class="nav-item" data-view="agents"><span>✦</span> Agents</button>
+        <button class="nav-item" data-view="features"><span>▤</span> Features</button>
+        <button class="nav-item" data-view="storage"><span>▣</span> Storage</button>
+        <button class="nav-item" data-view="realtime"><span>≈</span> Real-Time</button>
         <button class="nav-item" data-view="catalog"><span>▦</span> Catalog</button>
         <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
       </nav>
@@ -44,7 +47,7 @@
         <div class="hero">
           <div><span class="pill">YOUR GOLDEN PATH</span><h2>From idea to a reliable model,<br>without the platform archaeology.</h2>
           <p>Start with a proven project shape. Nexus wires the workflow together and tells you exactly what is real, missing, or next.</p></div>
-          <div class="progress-ring" id="progress-ring"><strong>75%</strong><span>ready</span></div>
+          <div class="progress-ring" id="progress-ring"><strong>0%</strong><span>ready</span></div>
         </div>
 
         <div class="stat-grid">
@@ -60,7 +63,7 @@
               <li class="done"><span>✓</span><div><b>Create a workspace</b><small>Your local control plane is running.</small></div></li>
               <li class="done"><span>✓</span><div><b>Choose a project template</b><small>Start with sane conventions, not an empty folder.</small></div></li>
               <li><span>3</span><div><b>Connect your infrastructure</b><small>Bring Kubernetes, MLflow, Feast and object storage online.</small></div><button data-view-target="platform">Configure</button></li>
-              <li><span>4</span><div><b>Ship your first real run</b><small>Submit the sample pipeline to your connected engine.</small></div></li>
+              <li><span>4</span><div><b>Ship your first real run</b><small>Submit the sample pipeline to your connected engine.</small></div><button data-view-target="pipelines">Run</button></li>
             </ol>
           </article>
           <article class="panel">
@@ -71,10 +74,54 @@
       </section>
 
       <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Your projects</h2><p>Each project gets a clear path from exploration to production.</p></div></div><div id="project-grid" class="card-grid"></div></section>
-      <section id="pipelines" class="view"><div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>One place to understand every experiment and production workflow.</p></div></div><div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div></section>
-      <section id="models" class="view"><div class="section-heading"><div><p class="eyebrow">MODEL LIFECYCLE</p><h2>Registry and deployments</h2><p>Evaluation gates, promotion, canary traffic and rollback in one place.</p></div></div><div id="model-grid" class="card-grid"></div></section>
-      <section id="agents" class="view"><div class="section-heading"><div><p class="eyebrow">AGENT OPERATIONS</p><h2>Agents and live sessions</h2><p>Deployments, tools, traces, token usage and cost.</p></div></div><div id="agent-summary" class="stat-grid"></div><div id="agent-grid" class="card-grid"></div><div class="panel table-wrap agent-traces"><table><thead><tr><th>Session</th><th>Agent</th><th>Node</th><th>Status</th><th>Turns</th><th>Tokens</th><th>Cost</th></tr></thead><tbody id="session-table"></tbody></table></div></section>
+
+      <section id="pipelines" class="view">
+        <div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>Real execution through the pipeline engine — every step reported live.</p></div><button class="primary" id="run-pipeline">▶ Run pipeline</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div>
+      </section>
+
+      <section id="models" class="view">
+        <div class="section-heading"><div><p class="eyebrow">MODEL LIFECYCLE</p><h2>Registry and deployments</h2><p>Evaluation gates, promotion, live serving, canary traffic and rollback.</p></div></div>
+        <div class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">EXPERIMENT PORTAL</p><h3>Model quality by version</h3></div><select id="metric-select"></select></div><canvas id="metric-chart" height="160"></canvas></div>
+        <div id="model-grid" class="card-grid"></div>
+      </section>
+
+      <section id="agents" class="view">
+        <div class="section-heading"><div><p class="eyebrow">AGENT OPERATIONS</p><h2>Agents and live sessions</h2><p>Deployments, tools, live sessions, traces, prompts, token usage and cost.</p></div></div>
+        <div id="agent-summary" class="stat-grid"></div>
+        <div id="agent-grid" class="card-grid"></div>
+        <div class="split">
+          <article class="panel table-wrap agent-traces"><div class="panel-heading"><div><p class="eyebrow">SESSION MONITOR</p><h3>Live sessions</h3></div></div><table><thead><tr><th>Session</th><th>Agent</th><th>Node</th><th>Status</th><th>Turns</th><th>Tokens</th><th>Cost</th></tr></thead><tbody id="session-table"></tbody></table></article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">PROMPT LIBRARY</p><h3>Langfuse prompts</h3></div></div><div id="prompt-list" class="prompt-list"></div></article>
+        </div>
+      </section>
+
+      <section id="features" class="view">
+        <div class="section-heading"><div><p class="eyebrow">FEATURE STORE</p><h2>Feature catalog</h2><p>Version-controlled definitions, online materialization status, and schemas.</p></div><input type="search" id="feature-search" placeholder="Search feature views…"></div>
+        <div id="feature-grid" class="card-grid"></div>
+      </section>
+
+      <section id="storage" class="view">
+        <div class="section-heading"><div><p class="eyebrow">ARTIFACTS &amp; ENDPOINTS</p><h2>Storage and endpoint explorer</h2><p>Browse the object store, live inference endpoints, and serverless functions.</p></div></div>
+        <div class="split">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">OBJECT STORE</p><h3 id="storage-title">Buckets</h3></div><button class="link" id="storage-up" hidden>← Back</button></div><div id="storage-browser" class="storage-browser"></div></article>
+          <div>
+            <article class="panel table-wrap"><div class="panel-heading"><div><p class="eyebrow">LIVE ENDPOINTS</p><h3>Model endpoints</h3></div></div><table><thead><tr><th>Model</th><th>Endpoint</th><th>Status</th><th></th></tr></thead><tbody id="endpoint-table"></tbody></table></article>
+            <article class="panel table-wrap"><div class="panel-heading"><div><p class="eyebrow">SERVERLESS</p><h3>Functions</h3></div></div><table><thead><tr><th>Function</th><th>Image</th><th>Replicas</th><th></th></tr></thead><tbody id="function-table"></tbody></table></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="realtime" class="view">
+        <div class="section-heading"><div><p class="eyebrow">STREAM PROCESSING</p><h2>Real-time AI</h2><p>Live event scoring through Kafka, the feature store, and served models and agents.</p></div></div>
+        <div id="realtime-grid" class="card-grid realtime-grid"></div>
+        <article class="panel"><div class="panel-heading"><div><p class="eyebrow">TRY IT</p><h3>Produce demo events</h3></div></div><pre class="hint">python -m realtime.produce --demo fraud --count 5
+python -m realtime.produce --demo callcenter --count 2
+python -m realtime.produce --demo recommendations --count 2</pre></article>
+      </section>
+
       <section id="catalog" class="view"><div class="section-heading"><div><p class="eyebrow">DISCOVERABILITY</p><h2>Shared catalog</h2><p>Models, features, agents, and tools—searchable and understandable.</p></div><div class="filters"><button class="active" data-kind="">All</button><button data-kind="model">Models</button><button data-kind="feature">Features</button><button data-kind="agent">Agents</button><button data-kind="tool">Tools</button></div></div><div id="catalog-grid" class="card-grid"></div></section>
+
       <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
     </main>
   </div>
@@ -89,17 +136,51 @@
       <p class="form-error" id="form-error"></p><button class="primary submit" type="submit">Create project →</button>
     </form>
   </dialog>
+
+  <dialog id="submit-dialog">
+    <form id="submit-form">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">RUN PIPELINE</p><h2>Submit a real run</h2><p>The engine executes each step in a container and reports back live.</p>
+      <label>Project<select name="project_id" id="submit-project"></select></label>
+      <label>Pipeline<select name="name"><option value="training-pipeline">training-pipeline</option></select></label>
+      <p class="form-error" id="submit-error"></p><button class="primary submit" type="submit">Submit run →</button>
+    </form>
+  </dialog>
+
   <dialog id="connection-dialog">
     <form id="connection-form">
       <button type="button" class="close" aria-label="Close">×</button>
       <p class="eyebrow">CONNECT SERVICE</p><h2>Add infrastructure</h2><p>Nexus stores only a Kubernetes Secret reference, never raw credentials.</p>
-      <label>Service<select name="type"><option value="kubernetes">Kubernetes</option><option value="mlflow">MLflow</option><option value="s3">S3 / MinIO</option><option value="kafka">Kafka REST</option><option value="langfuse">Langfuse</option></select></label>
+      <label>Service<select name="type"><option value="kubernetes">Kubernetes</option><option value="mlflow">MLflow</option><option value="s3">S3 / MinIO</option><option value="kafka">Kafka REST</option><option value="langfuse">Langfuse</option><option value="prefect">Prefect</option><option value="redis">Redis / Feast</option></select></label>
       <label>Connection name<input name="name" required placeholder="e.g. production-mlflow"></label>
       <label>Health endpoint<input name="endpoint" required type="url" placeholder="https://mlflow.example.com/health"></label>
       <label>Kubernetes Secret<input name="secret_ref" required placeholder="mlflow-credentials"></label>
       <p class="form-error" id="connection-error"></p><button class="primary submit" type="submit">Save and test</button>
     </form>
   </dialog>
+
+  <dialog id="chat-dialog">
+    <div class="detail-sheet chat-sheet">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">AGENT TEST CONSOLE</p><h2 id="chat-agent-name">Agent</h2>
+      <div id="chat-log" class="chat-log"><p class="empty">Ask something — the turn runs through the real agent runtime.</p></div>
+      <form id="chat-form"><input id="chat-input" placeholder="e.g. When are invoices issued?" autocomplete="off" required><button class="primary" type="submit">Send</button></form>
+    </div>
+  </dialog>
+
+  <dialog id="predict-dialog">
+    <div class="detail-sheet">
+      <button type="button" class="close" aria-label="Close">×</button>
+      <p class="eyebrow">INFERENCE TEST CONSOLE</p><h2 id="predict-model-name">Model</h2>
+      <form id="predict-form">
+        <label>Request payload (mlflow /invocations)<textarea id="predict-input" rows="5">{"inputs": [[0.1, -1.2, 0.5, 2.0, 0.3, -0.7, 1.1, 0.0, -0.4, 0.9, -1.5, 0.2]]}</textarea></label>
+        <button class="primary" type="submit">Send prediction request</button>
+      </form>
+      <pre id="predict-output" class="hint"></pre>
+    </div>
+  </dialog>
+
+  <dialog id="preview-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="preview-detail"></div></div></dialog>
   <dialog id="run-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="run-detail"></div></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
