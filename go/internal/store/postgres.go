@@ -147,6 +147,42 @@ func (p *Postgres) RetryRun(runID, actor string) (api.PipelineRun, error) {
 	return run, p.write("pipeline_run", run.ID, run, "pipeline.retried", actor, map[string]any{"parent_run_id": previous.ID})
 }
 
+// SetRunEngine links a control-plane run to its execution engine run id.
+func (p *Postgres) SetRunEngine(runID, engineRunID string) (api.PipelineRun, error) {
+	run, err := p.Run(runID)
+	if err != nil {
+		return run, err
+	}
+	run.EngineRunID, run.UpdatedAt = engineRunID, time.Now().UTC()
+	return run, p.write("pipeline_run", run.ID, run, "pipeline.engine_linked", "system", map[string]any{"engine_run_id": engineRunID})
+}
+
+// UpdateRunStep applies a reported step transition; shares the deterministic
+// transition logic with the file store.
+func (p *Postgres) UpdateRunStep(runID string, req api.UpdateRunStepRequest, actor string) (api.PipelineRun, error) {
+	if req.Step == "" || req.Status == "" {
+		return api.PipelineRun{}, errors.New("step and status are required")
+	}
+	if !validStepStatus(req.Status) {
+		return api.PipelineRun{}, fmt.Errorf("invalid step status %q", req.Status)
+	}
+	run, err := p.Run(runID)
+	if err != nil {
+		return run, err
+	}
+	now := time.Now().UTC()
+	level := "info"
+	if req.Status == "failed" {
+		level = "error"
+	}
+	run.Logs = append(run.Logs, api.RunLog{Timestamp: now, Step: req.Step, Level: level, Message: stepMessage(req)})
+	if run.Status != "cancelled" && run.Status != "failed" && run.Status != "succeeded" {
+		applyStepTransition(&run, req)
+		run.UpdatedAt = now
+	}
+	return run, p.write("pipeline_run", run.ID, run, "pipeline.step_reported", actor, map[string]any{"step": req.Step, "status": req.Status})
+}
+
 func (p *Postgres) RegisterModel(req api.RegisterModelRequest, actor string) (api.Model, error) {
 	if !p.exists("project", req.ProjectID) {
 		return api.Model{}, ErrNotFound
@@ -197,6 +233,17 @@ func (p *Postgres) DeployModel(modelID string, weight int, actor string) (api.Mo
 	model.DeploymentStatus, model.CanaryWeight, model.EndpointURL = "deploying", weight, "/v1/models/"+model.Name+":predict"
 	return model, p.write("model", model.ID, model, "model.deployed", actor, map[string]any{"canary_weight": weight})
 }
+// SetModelEndpoint records the live serving endpoint after the serving
+// manager has actually started the model server.
+func (p *Postgres) SetModelEndpoint(modelID, endpoint, status string) (api.Model, error) {
+	model, err := get[api.Model](p, "model", modelID)
+	if err != nil {
+		return model, err
+	}
+	model.EndpointURL, model.DeploymentStatus = endpoint, status
+	return model, p.write("model", model.ID, model, "model.endpoint_updated", "system", map[string]any{"endpoint": endpoint, "status": status})
+}
+
 func (p *Postgres) RollbackModel(modelID, actor string) (api.Model, error) {
 	model, err := get[api.Model](p, "model", modelID)
 	if err != nil {

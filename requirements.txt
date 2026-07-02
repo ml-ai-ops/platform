@@ -17,3 +17,7 @@ psycopg[binary]>=3.1
 # Agent runtime service
 fastapi>=0.111
 uvicorn>=0.30
+
+# Pipeline engine (Compose-native execution; KFP remains the Kubernetes path)
+prefect>=3.0
+scikit-learn>=1.4

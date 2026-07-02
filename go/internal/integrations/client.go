@@ -86,6 +86,149 @@ func (l Langfuse) Ingest(ctx context.Context, batch []map[string]any) error {
 	return l.client.JSON(ctx, http.MethodPost, "/api/public/ingestion", map[string]any{"batch": batch}, &map[string]any{})
 }
 
+// Prefect drives real pipeline execution against a self-hosted Prefect
+// server (the Compose-native fulfilment of the PRD pipeline engine; KFP
+// remains the Kubernetes path).
+type Prefect struct{ client *Client }
+
+func NewPrefect(baseURL, token string) Prefect { return Prefect{client: New(baseURL, token)} }
+
+// CreateFlowRun resolves a deployment by flow/deployment name and creates a
+// flow run carrying the control-plane run id as a parameter so the flow can
+// report step status back.
+func (p Prefect) CreateFlowRun(ctx context.Context, flowName, deploymentName, runName string, parameters map[string]any) (string, error) {
+	var deployment struct {
+		ID string `json:"id"`
+	}
+	path := "/api/deployments/name/" + url.PathEscape(flowName) + "/" + url.PathEscape(deploymentName)
+	if err := p.client.JSON(ctx, http.MethodGet, path, nil, &deployment); err != nil {
+		return "", fmt.Errorf("prefect deployment %s/%s not found: %w", flowName, deploymentName, err)
+	}
+	var flowRun struct {
+		ID string `json:"id"`
+	}
+	payload := map[string]any{"name": runName, "parameters": parameters}
+	if err := p.client.JSON(ctx, http.MethodPost, "/api/deployments/"+deployment.ID+"/create_flow_run", payload, &flowRun); err != nil {
+		return "", err
+	}
+	if flowRun.ID == "" {
+		return "", errors.New("prefect did not return a flow run id")
+	}
+	return flowRun.ID, nil
+}
+
+// CancelFlowRun requests cancellation of a running flow run.
+func (p Prefect) CancelFlowRun(ctx context.Context, flowRunID string) error {
+	payload := map[string]any{"state": map[string]any{"type": "CANCELLING", "name": "Cancelling"}}
+	return p.client.JSON(ctx, http.MethodPost, "/api/flow_runs/"+url.PathEscape(flowRunID)+"/set_state", payload, &map[string]any{})
+}
+
+// OpenFaaS is the platform's serverless AI deployment integration, chosen to
+// satisfy the PRD serverless requirement without any excluded technology
+// (PRD section 2). Locally and on a VM it targets faasd; on Kubernetes the
+// same API is served by OpenFaaS.
+type OpenFaaS struct {
+	client   *Client
+	user     string
+	password string
+}
+
+func NewOpenFaaS(baseURL, user, password string) OpenFaaS {
+	return OpenFaaS{client: New(baseURL, ""), user: user, password: password}
+}
+
+type Function struct {
+	Name        string            `json:"name"`
+	Image       string            `json:"image"`
+	Replicas    int               `json:"replicas"`
+	EnvVars     map[string]string `json:"envVars,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+func (o OpenFaaS) request(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+	if o.client.BaseURL == "" {
+		return nil, errors.New("openfaas base URL is not configured")
+	}
+	request, err := http.NewRequestWithContext(ctx, method, o.client.BaseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if o.user != "" {
+		request.SetBasicAuth(o.user, o.password)
+	}
+	return o.client.HTTP.Do(request)
+}
+
+func (o OpenFaaS) checked(response *http.Response, err error) ([]byte, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, 4<<20))
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("openfaas returned %d: %s", response.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return raw, nil
+}
+
+// DeployFunction creates or updates a function (PUT is OpenFaaS's idempotent
+// deploy).
+func (o OpenFaaS) DeployFunction(ctx context.Context, function Function) error {
+	if function.Name == "" || function.Image == "" {
+		return errors.New("function name and image are required")
+	}
+	raw, err := json.Marshal(map[string]any{
+		"service":     function.Name,
+		"image":       function.Image,
+		"envVars":     function.EnvVars,
+		"labels":      function.Labels,
+		"annotations": function.Annotations,
+	})
+	if err != nil {
+		return err
+	}
+	response, err := o.request(ctx, http.MethodPut, "/system/functions", bytes.NewReader(raw))
+	_, err = o.checked(response, err)
+	return err
+}
+
+// ListFunctions returns the deployed functions with their replica counts
+// (replicas 0 = scaled to zero).
+func (o OpenFaaS) ListFunctions(ctx context.Context) ([]Function, error) {
+	response, err := o.request(ctx, http.MethodGet, "/system/functions", nil)
+	raw, err := o.checked(response, err)
+	if err != nil {
+		return nil, err
+	}
+	var listed []struct {
+		Name     string            `json:"name"`
+		Image    string            `json:"image"`
+		Replicas int               `json:"replicas"`
+		Labels   map[string]string `json:"labels"`
+	}
+	if err := json.Unmarshal(raw, &listed); err != nil {
+		return nil, err
+	}
+	functions := make([]Function, 0, len(listed))
+	for _, item := range listed {
+		functions = append(functions, Function{Name: item.Name, Image: item.Image, Replicas: item.Replicas, Labels: item.Labels})
+	}
+	return functions, nil
+}
+
+// Invoke calls a function synchronously and returns the raw response body.
+func (o OpenFaaS) Invoke(ctx context.Context, name string, payload []byte) ([]byte, error) {
+	if name == "" {
+		return nil, errors.New("function name is required")
+	}
+	response, err := o.request(ctx, http.MethodPost, "/function/"+url.PathEscape(name), bytes.NewReader(payload))
+	return o.checked(response, err)
+}
+
 type KafkaREST struct{ client *Client }
 
 func NewKafkaREST(baseURL, token string) KafkaREST { return KafkaREST{client: New(baseURL, token)} }

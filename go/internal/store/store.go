@@ -156,6 +156,114 @@ func (s *Store) RetryRun(runID, actor string) (api.PipelineRun, error) {
 	return api.PipelineRun{}, ErrNotFound
 }
 
+// SetRunEngine links a control-plane run to its execution engine run id.
+func (s *Store) SetRunEngine(runID, engineRunID string) (api.PipelineRun, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Runs {
+		if s.data.Runs[i].ID == runID {
+			s.data.Runs[i].EngineRunID = engineRunID
+			s.data.Runs[i].UpdatedAt = time.Now().UTC()
+			return s.data.Runs[i], s.persist()
+		}
+	}
+	return api.PipelineRun{}, ErrNotFound
+}
+
+// UpdateRunStep applies a step transition reported by the executing pipeline
+// and recomputes run status and progress deterministically.
+func (s *Store) UpdateRunStep(runID string, req api.UpdateRunStepRequest, actor string) (api.PipelineRun, error) {
+	if req.Step == "" || req.Status == "" {
+		return api.PipelineRun{}, errors.New("step and status are required")
+	}
+	if !validStepStatus(req.Status) {
+		return api.PipelineRun{}, fmt.Errorf("invalid step status %q", req.Status)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Runs {
+		if s.data.Runs[i].ID != runID {
+			continue
+		}
+		run := &s.data.Runs[i]
+		now := time.Now().UTC()
+		level := "info"
+		if req.Status == "failed" {
+			level = "error"
+		}
+		run.Logs = append(run.Logs, api.RunLog{Timestamp: now, Step: req.Step, Level: level, Message: stepMessage(req)})
+		if run.Status == "cancelled" || run.Status == "failed" || run.Status == "succeeded" {
+			// Terminal runs keep their state; late reports are only logged.
+			return *run, s.persist()
+		}
+		applyStepTransition(run, req)
+		run.UpdatedAt = now
+		return *run, s.persist()
+	}
+	return api.PipelineRun{}, ErrNotFound
+}
+
+func validStepStatus(status string) bool {
+	switch status {
+	case "pending", "running", "succeeded", "failed", "skipped":
+		return true
+	}
+	return false
+}
+
+func stepMessage(req api.UpdateRunStepRequest) string {
+	if req.Message != "" {
+		return req.Message
+	}
+	return "step " + req.Step + " " + req.Status
+}
+
+// applyStepTransition upserts the step and recomputes run status/progress:
+// any failed step fails the run, any running step keeps it running, and the
+// run succeeds only when every step has finished.
+func applyStepTransition(run *api.PipelineRun, req api.UpdateRunStepRequest) {
+	found := false
+	for i := range run.Steps {
+		if run.Steps[i].Name == req.Step {
+			run.Steps[i].Status = req.Status
+			if req.Status == "succeeded" || req.Status == "skipped" {
+				run.Steps[i].Progress = 100
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		step := api.PipelineStep{Name: req.Step, Status: req.Status}
+		if req.Status == "succeeded" || req.Status == "skipped" {
+			step.Progress = 100
+		}
+		run.Steps = append(run.Steps, step)
+	}
+	completed, failed, running := 0, 0, 0
+	for _, step := range run.Steps {
+		switch step.Status {
+		case "succeeded", "skipped":
+			completed++
+		case "failed":
+			failed++
+		case "running":
+			running++
+		}
+	}
+	if len(run.Steps) > 0 {
+		run.Progress = completed * 100 / len(run.Steps)
+	}
+	switch {
+	case failed > 0:
+		run.Status = "failed"
+	case completed == len(run.Steps):
+		run.Status, run.Progress = "succeeded", 100
+	case running > 0 || completed > 0:
+		run.Status = "running"
+	}
+}
+
 func (s *Store) RegisterModel(req api.RegisterModelRequest, actor string) (api.Model, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -215,6 +323,21 @@ func (s *Store) DeployModel(modelID string, weight int, actor string) (api.Model
 			s.data.Models[i].DeploymentStatus, s.data.Models[i].CanaryWeight = "deploying", weight
 			s.data.Models[i].EndpointURL = "/v1/models/" + s.data.Models[i].Name + ":predict"
 			s.record("model.deployed", "model", modelID, actor, map[string]any{"canary_weight": weight})
+			return s.data.Models[i], s.persist()
+		}
+	}
+	return api.Model{}, ErrNotFound
+}
+
+// SetModelEndpoint records the live serving endpoint after the serving
+// manager (or KServe on Kubernetes) has actually started the model server.
+func (s *Store) SetModelEndpoint(modelID, endpoint, status string) (api.Model, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Models {
+		if s.data.Models[i].ID == modelID {
+			s.data.Models[i].EndpointURL = endpoint
+			s.data.Models[i].DeploymentStatus = status
 			return s.data.Models[i], s.persist()
 		}
 	}

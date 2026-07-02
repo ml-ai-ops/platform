@@ -11,9 +11,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mlaiops/platform/internal/auth"
+	"github.com/mlaiops/platform/internal/integrations"
 	"github.com/mlaiops/platform/internal/platform"
 	"github.com/mlaiops/platform/internal/store"
 	"github.com/mlaiops/platform/pkg/api"
@@ -22,10 +24,13 @@ import (
 type Server struct {
 	store  store.Repository
 	static fs.FS
+
+	realtimeMu sync.RWMutex
+	realtime   map[string]map[string]any
 }
 
 func New(data store.Repository, static fs.FS) http.Handler {
-	server := &Server{store: data, static: static}
+	server := &Server{store: data, static: static, realtime: map[string]map[string]any{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", server.health)
 	mux.HandleFunc("GET /api/v1/dashboard", server.dashboard)
@@ -37,6 +42,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/pipelines/runs/{id}", server.run)
 	mux.HandleFunc("POST /api/v1/pipelines/runs/{id}/cancel", server.cancelRun)
 	mux.HandleFunc("POST /api/v1/pipelines/runs/{id}/retry", server.retryRun)
+	mux.HandleFunc("POST /api/v1/pipelines/runs/{id}/steps", server.updateRunStep)
 	mux.HandleFunc("GET /api/v1/components", server.components)
 	mux.HandleFunc("GET /api/v1/catalog", server.catalog)
 	mux.HandleFunc("GET /api/v1/features", server.features)
@@ -46,11 +52,17 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/storage/objects", server.storageProxy("/objects"))
 	mux.HandleFunc("GET /api/v1/storage/object", server.storageProxy("/object"))
 	mux.HandleFunc("GET /api/v1/prompts", server.prompts)
+	mux.HandleFunc("GET /api/v1/realtime", server.realtimeStats)
+	mux.HandleFunc("POST /api/v1/realtime/{demo}", server.reportRealtime)
+	mux.HandleFunc("GET /api/v1/functions", server.functions)
+	mux.HandleFunc("POST /api/v1/functions", server.deployFunction)
+	mux.HandleFunc("POST /api/v1/functions/{name}/invoke", server.invokeFunction)
 	mux.HandleFunc("GET /api/v1/models", server.models)
 	mux.HandleFunc("POST /api/v1/models", server.registerModel)
 	mux.HandleFunc("POST /api/v1/models/{id}/promote", server.promoteModel)
 	mux.HandleFunc("POST /api/v1/models/{id}/deploy", server.deployModel)
 	mux.HandleFunc("POST /api/v1/models/{id}/rollback", server.rollbackModel)
+	mux.HandleFunc("POST /api/v1/models/{id}/predict", server.predictModel)
 	mux.HandleFunc("GET /api/v1/agents", server.agents)
 	mux.HandleFunc("POST /api/v1/agents", server.deployAgent)
 	mux.HandleFunc("PUT /api/v1/agents/{id}/traffic", server.agentTraffic)
@@ -158,6 +170,26 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {
 	item, err := s.store.CancelRun(r.PathValue("id"), actor(r))
+	if err == nil && item.EngineRunID != "" && os.Getenv("PREFECT_API_URL") != "" {
+		// Best effort: the control-plane cancellation is authoritative; the
+		// engine cancellation stops the actual execution.
+		prefect := integrations.NewPrefect(os.Getenv("PREFECT_API_URL"), "")
+		if cancelErr := prefect.CancelFlowRun(r.Context(), item.EngineRunID); cancelErr != nil {
+			log.Printf("prefect cancel failed for run %s (%s): %v", item.ID, item.EngineRunID, cancelErr)
+		}
+	}
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+// updateRunStep receives step transitions from the executing pipeline itself
+// (the SDK step reporter inside each flow).
+func (s *Server) updateRunStep(w http.ResponseWriter, r *http.Request) {
+	var req api.UpdateRunStepRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.UpdateRunStep(r.PathValue("id"), req, actor(r))
 	writeMutation(w, item, err, http.StatusOK)
 }
 func (s *Server) retryRun(w http.ResponseWriter, r *http.Request) {
@@ -179,6 +211,21 @@ func (s *Server) submitPipeline(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, status, "pipeline_submission_failed", err.Error())
 		return
+	}
+	// With an execution engine configured, the run is real: create the Prefect
+	// flow run carrying our run id so the flow reports steps back. Fail closed
+	// (run marked failed) when the engine rejects the submission.
+	if prefectURL := os.Getenv("PREFECT_API_URL"); prefectURL != "" {
+		prefect := integrations.NewPrefect(prefectURL, "")
+		engineID, submitErr := prefect.CreateFlowRun(r.Context(), run.Name, "mlaiops", run.ID, map[string]any{"run_id": run.ID})
+		if submitErr != nil {
+			run, _ = s.store.UpdateRunStep(run.ID, api.UpdateRunStepRequest{Step: "submit-to-engine", Status: "failed", Message: submitErr.Error()}, "system")
+			writeJSON(w, http.StatusAccepted, run)
+			return
+		}
+		if linked, linkErr := s.store.SetRunEngine(run.ID, engineID); linkErr == nil {
+			run = linked
+		}
 	}
 	writeJSON(w, http.StatusAccepted, run)
 }
@@ -297,6 +344,93 @@ func (s *Server) prompts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "items": payload.Data})
 }
 
+// realtimeStats exposes the live stream-processing statistics reported by the
+// realtime consumer service. In-memory by design: these are live gauges, not
+// durable state.
+func (s *Server) realtimeStats(w http.ResponseWriter, _ *http.Request) {
+	s.realtimeMu.RLock()
+	defer s.realtimeMu.RUnlock()
+	writeJSON(w, http.StatusOK, map[string]any{"demos": s.realtime})
+}
+
+func (s *Server) reportRealtime(w http.ResponseWriter, r *http.Request) {
+	demo := r.PathValue("demo")
+	var payload map[string]any
+	if err := decode(r, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	payload["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	s.realtimeMu.Lock()
+	s.realtime[demo] = payload
+	s.realtimeMu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// openfaas builds the serverless client from the environment; nil when the
+// integration is not configured.
+func openfaas() *integrations.OpenFaaS {
+	base := os.Getenv("OPENFAAS_URL")
+	if base == "" {
+		return nil
+	}
+	client := integrations.NewOpenFaaS(base, os.Getenv("OPENFAAS_USER"), os.Getenv("OPENFAAS_PASSWORD"))
+	return &client
+}
+
+func (s *Server) functions(w http.ResponseWriter, r *http.Request) {
+	client := openfaas()
+	if client == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"configured": false, "items": []any{}})
+		return
+	}
+	items, err := client.ListFunctions(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "openfaas_unreachable", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "items": items, "total": len(items)})
+}
+
+func (s *Server) deployFunction(w http.ResponseWriter, r *http.Request) {
+	client := openfaas()
+	if client == nil {
+		writeError(w, http.StatusConflict, "not_configured", "OPENFAAS_URL is not configured")
+		return
+	}
+	var req integrations.Function
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if err := client.DeployFunction(r.Context(), req); err != nil {
+		writeError(w, http.StatusBadGateway, "deploy_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, req)
+}
+
+func (s *Server) invokeFunction(w http.ResponseWriter, r *http.Request) {
+	client := openfaas()
+	if client == nil {
+		writeError(w, http.StatusConflict, "not_configured", "OPENFAAS_URL is not configured")
+		return
+	}
+	payload, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	result, err := client.Invoke(r.Context(), r.PathValue("name"), payload)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "invoke_failed", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result)
+}
+
 func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
 	items := s.store.Models()
 	writeJSON(w, http.StatusOK, api.Page[api.Model]{Items: items, Total: len(items)})
@@ -328,11 +462,117 @@ func (s *Server) deployModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := s.store.DeployModel(r.PathValue("id"), req.CanaryWeight, actor(r))
-	writeMutation(w, item, err, http.StatusAccepted)
+	if err != nil {
+		writeMutation(w, item, err, http.StatusAccepted)
+		return
+	}
+	// With a serving manager configured, deployment is real: an mlflow serve
+	// container starts and the live endpoint is recorded. Fail closed when the
+	// serving manager rejects it.
+	if managerURL := os.Getenv("SERVING_MANAGER_URL"); managerURL != "" {
+		endpoint, deployErr := s.requestServing(r, managerURL, item)
+		if deployErr != nil {
+			item, _ = s.store.SetModelEndpoint(item.ID, "", "failed")
+			writeError(w, http.StatusBadGateway, "serving_failed", deployErr.Error())
+			return
+		}
+		if updated, setErr := s.store.SetModelEndpoint(item.ID, endpoint, "serving"); setErr == nil {
+			item = updated
+		}
+	}
+	writeJSON(w, http.StatusAccepted, item)
 }
+
+func (s *Server) requestServing(r *http.Request, managerURL string, model api.Model) (string, error) {
+	body, _ := json.Marshal(map[string]string{"name": model.Name, "artifact_uri": model.ArtifactURI})
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(managerURL, "/")+"/deployments", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if token := os.Getenv("MLAIOPS_INTERNAL_TOKEN"); token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	client := &http.Client{Timeout: 90 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+		return "", errors.New("serving manager: " + strings.TrimSpace(string(raw)))
+	}
+	var payload struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	return payload.Endpoint, nil
+}
+
 func (s *Server) rollbackModel(w http.ResponseWriter, r *http.Request) {
 	item, err := s.store.RollbackModel(r.PathValue("id"), actor(r))
+	if err == nil && os.Getenv("SERVING_MANAGER_URL") != "" {
+		// Best effort: remove the serving container for the rolled-back model.
+		managerURL := strings.TrimRight(os.Getenv("SERVING_MANAGER_URL"), "/")
+		request, buildErr := http.NewRequestWithContext(r.Context(), http.MethodDelete, managerURL+"/deployments/"+url.PathEscape(item.Name), nil)
+		if buildErr == nil {
+			if token := os.Getenv("MLAIOPS_INTERNAL_TOKEN"); token != "" {
+				request.Header.Set("Authorization", "Bearer "+token)
+			}
+			client := &http.Client{Timeout: 30 * time.Second}
+			if response, doErr := client.Do(request); doErr == nil {
+				_ = response.Body.Close()
+			} else {
+				log.Printf("serving rollback undeploy failed for %s: %v", item.Name, doErr)
+			}
+		}
+	}
 	writeMutation(w, item, err, http.StatusOK)
+}
+
+// predictModel proxies a console test request to the model's live serving
+// endpoint (mlflow serve /invocations contract).
+func (s *Server) predictModel(w http.ResponseWriter, r *http.Request) {
+	var model *api.Model
+	for _, item := range s.store.Models() {
+		if item.ID == r.PathValue("id") {
+			value := item
+			model = &value
+			break
+		}
+	}
+	if model == nil {
+		writeError(w, http.StatusNotFound, "not_found", "model not found")
+		return
+	}
+	if model.EndpointURL == "" || !strings.HasPrefix(model.EndpointURL, "http") {
+		writeError(w, http.StatusConflict, "not_serving", "model has no live serving endpoint")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, strings.TrimRight(model.EndpointURL, "/")+"/invocations", bytes.NewReader(body))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "endpoint_unreachable", err.Error())
+		return
+	}
+	request.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 30 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "endpoint_unreachable", err.Error())
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, _ = io.Copy(w, response.Body)
 }
 
 func (s *Server) agents(w http.ResponseWriter, _ *http.Request) {

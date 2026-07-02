@@ -28,8 +28,19 @@ type PipelineRun struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	ParentRunID string         `json:"parent_run_id,omitempty"`
+	// EngineRunID links the control-plane run to the execution engine's run
+	// (Prefect flow run id locally, KFP run id on Kubernetes).
+	EngineRunID string         `json:"engine_run_id,omitempty"`
 	Steps       []PipelineStep `json:"steps"`
 	Logs        []RunLog       `json:"logs,omitempty"`
+}
+
+// UpdateRunStepRequest is sent by the executing pipeline itself (through the
+// SDK step reporter) at every step transition.
+type UpdateRunStepRequest struct {
+	Step    string `json:"step"`
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
 }
 
 type PipelineStep struct {

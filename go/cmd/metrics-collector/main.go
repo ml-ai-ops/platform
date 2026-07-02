@@ -14,11 +14,15 @@ import (
 func main() {
 	targets := parseTargets(os.Getenv("MLAIOPS_METRICS_TARGETS"))
 	collector := platformmetrics.New(targets)
+	platform := platformmetrics.NewPlatformCollector(os.Getenv("MLAIOPS_URL"), os.Getenv("MLAIOPS_TOKEN"))
 	go func() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 		for {
 			collector.Poll(context.Background())
+			if err := platform.Poll(context.Background()); err != nil {
+				log.Printf("platform metrics poll failed: %v", err)
+			}
 			<-ticker.C
 		}
 	}()
@@ -27,6 +31,7 @@ func main() {
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte(collector.Prometheus()))
+		_, _ = w.Write([]byte(platform.Prometheus()))
 	})
 	server := &http.Server{Addr: ":" + env("PORT", "9090"), Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("metrics collector listening on %s", server.Addr)

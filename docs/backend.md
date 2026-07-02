@@ -5,15 +5,25 @@ remain independently deployable dependencies and are reached through their stand
 
 ## Service inventory
 
-| Binary | Default port | Responsibility |
-|---|---:|---|
-| `mlaiops-gateway` | 8080 | Projects, runs, models, agents, tools, connections, audit |
-| `mlaiops-operator` | 8082 | Deterministic CRD-to-workload reconciliation plans |
-| `mlaiops-feature-gateway` | 8083 | Feast-compatible online feature retrieval |
-| `mlaiops-storage-proxy` | 8084 | Short-lived AWS SigV4 S3 URLs |
-| `mlaiops-trace-proxy` | 8081 | OpenAI-compatible reverse proxy and trace emission |
-| `mlaiops-metrics-collector` | 9090 | Prometheus component health metrics |
-| `mlaiops` | n/a | Operator and engineer CLI |
+| Binary                        | Default port | Responsibility                                            |
+| ----------------------------- | -----------: | --------------------------------------------------------- |
+| `mlaiops-gateway`           |         8080 | Projects, runs, models, agents, tools, connections, audit |
+| `mlaiops-operator`          |         8082 | Deterministic CRD-to-workload reconciliation plans        |
+| `mlaiops-feature-gateway`   |         8083 | Feast-compatible online feature retrieval                 |
+| `mlaiops-storage-proxy`     |         8084 | Short-lived AWS SigV4 S3 URLs                             |
+| `mlaiops-trace-proxy`       |         8081 | OpenAI-compatible reverse proxy and trace emission        |
+| `mlaiops-metrics-collector` |         9090 | Prometheus component health + PRD 8.2.1 platform metrics  |
+| `mlaiops-serving-manager`   |         8085 | Real model serving via mlflow-serve containers (Docker)   |
+| `mlaiops`                   |          n/a | Operator and engineer CLI                                 |
+
+Python-owned workload services (each with its own Dockerfile):
+
+| Service | Responsibility |
+| --- | --- |
+| `agent-runtime` | Serves LangGraph agents over HTTP with Postgres checkpoints and Langfuse tracing |
+| `pipeline-runner` | Serves platform flows as Prefect deployments and executes real training runs |
+| `realtime-processor` | Kafka consumers for the fraud / call-center / recommendations demos |
+| `feature-materializer` | Applies feature definitions and materializes the online store |
 
 All services are built from the root `Dockerfile`:
 
@@ -29,18 +39,18 @@ in PostgreSQL when `DATABASE_URL` is set. Every mutation writes its resource, au
 Kafka outbox entries in one transaction. Local file mode remains available through
 `MLAIOPS_DATA_PATH`.
 
-| Resource | Operations |
-|---|---|
-| Projects | create, list |
-| Pipelines | submit, inspect DAG/logs, cancel, retry, compare parent runs |
-| Models | register, evaluate gates, promote, deploy canary, rollback |
-| Agents | deploy, list, invoke (runtime proxy), set traffic, sessions, traces, token/cost usage |
-| Feature views | apply (upsert), list, report materialization |
-| Storage | list buckets, list objects by prefix, bounded object preview (proxied to storage-proxy) |
-| Prompts | list Langfuse-managed prompts (reports `configured:false` when Langfuse is absent) |
-| Tools | register typed schema, list |
-| Connections | create secret reference, list |
-| Audit | ordered event list |
+| Resource      | Operations                                                                              |
+| ------------- | --------------------------------------------------------------------------------------- |
+| Projects      | create, list                                                                            |
+| Pipelines     | submit, inspect DAG/logs, cancel, retry, compare parent runs                            |
+| Models        | register, evaluate gates, promote, deploy canary, rollback                              |
+| Agents        | deploy, list, invoke (runtime proxy), set traffic, sessions, traces, token/cost usage   |
+| Feature views | apply (upsert), list, report materialization                                            |
+| Storage       | list buckets, list objects by prefix, bounded object preview (proxied to storage-proxy) |
+| Prompts       | list Langfuse-managed prompts (reports`configured:false` when Langfuse is absent)     |
+| Tools         | register typed schema, list                                                             |
+| Connections   | create secret reference, list                                                           |
+| Audit         | ordered event list                                                                      |
 
 The component health grid and shared catalog are derived from live state: components turn
 healthy only when a checked connection succeeds, and the catalog lists only models, feature
@@ -75,24 +85,28 @@ stages, and creates KServe `InferenceService` resources.
 
 ## Configuration
 
-| Variable | Component | Meaning |
-|---|---|---|
-| `MLAIOPS_DATA_PATH` | gateway | Durable control-plane state file |
-| `DATABASE_URL` | gateway | PostgreSQL connection string; enables production repository |
-| `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` | gateway | JWT verification contract |
-| `MLAIOPS_INTERNAL_TOKEN` | feature/storage | Internal API bearer token |
-| `FEAST_URL` | feature gateway | Delegate lookups to a running Feast feature server |
-| `REDIS_URL` | feature gateway | Direct Redis online store (platform key convention) |
-| `AGENT_RUNTIME_URL` | gateway | Agent runtime address for `/agents/{id}/invoke` |
-| `STORAGE_PROXY_URL` | gateway | Storage proxy address for `/api/v1/storage/*` |
-| `LANGFUSE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | gateway | Prompt Library proxy |
-| `S3_ENDPOINT` | storage proxy | MinIO or S3-compatible endpoint |
-| `S3_REGION` | storage proxy | S3 signing region |
-| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | storage proxy | Inject from Vault/Kubernetes Secret |
-| `LLM_UPSTREAM_URL` | trace proxy | KServe/vLLM or external compatible endpoint |
-| `TRACE_SINK_URL`, `TRACE_SINK_TOKEN` | trace proxy | Langfuse/event ingestion target |
-| `MLAIOPS_METRICS_TARGETS` | metrics collector | `name=url` comma-separated health endpoints |
-| `MLAIOPS_URL` | CLI | Gateway base URL |
+| Variable                                                           | Component         | Meaning                                                     |
+| ------------------------------------------------------------------ | ----------------- | ----------------------------------------------------------- |
+| `MLAIOPS_DATA_PATH`                                              | gateway           | Durable control-plane state file                            |
+| `DATABASE_URL`                                                   | gateway           | PostgreSQL connection string; enables production repository |
+| `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL`              | gateway           | JWT verification contract                                   |
+| `MLAIOPS_INTERNAL_TOKEN`                                         | feature/storage   | Internal API bearer token                                   |
+| `FEAST_URL`                                                      | feature gateway   | Delegate lookups to a running Feast feature server          |
+| `REDIS_URL`                                                      | feature gateway   | Direct Redis online store (platform key convention)         |
+| `AGENT_RUNTIME_URL`                                              | gateway           | Agent runtime address for`/agents/{id}/invoke`            |
+| `STORAGE_PROXY_URL`                                              | gateway           | Storage proxy address for`/api/v1/storage/*`              |
+| `LANGFUSE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | gateway           | Prompt Library proxy                                        |
+| `PREFECT_API_URL` | gateway | Real pipeline execution through Prefect |
+| `SERVING_MANAGER_URL` | gateway | Real model serving on deploy/rollback |
+| `OPENFAAS_URL`, `OPENFAAS_USER`, `OPENFAAS_PASSWORD` | gateway | Serverless function deploy/list/invoke |
+| `SERVE_IMAGE`, `PLATFORM_NETWORK` | serving manager | Image and network for model containers |
+| `S3_ENDPOINT`                                                    | storage proxy     | MinIO or S3-compatible endpoint                             |
+| `S3_REGION`                                                      | storage proxy     | S3 signing region                                           |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY`                               | storage proxy     | Inject from Vault/Kubernetes Secret                         |
+| `LLM_UPSTREAM_URL`                                               | trace proxy       | KServe/vLLM or external compatible endpoint                 |
+| `TRACE_SINK_URL`, `TRACE_SINK_TOKEN`                           | trace proxy       | Langfuse/event ingestion target                             |
+| `MLAIOPS_METRICS_TARGETS`                                        | metrics collector | `name=url` comma-separated health endpoints               |
+| `MLAIOPS_URL`                                                    | CLI               | Gateway base URL                                            |
 
 ## Local environments
 
