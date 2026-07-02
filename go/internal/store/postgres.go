@@ -248,6 +248,45 @@ func (p *Postgres) RegisterTool(req api.RegisterToolRequest, actor string) (api.
 	return tool, p.write("tool", tool.ID, tool, "tool.registered", actor, nil)
 }
 
+func (p *Postgres) FeatureViews() []api.FeatureView {
+	return list[api.FeatureView](p, "feature_view")
+}
+
+// ApplyFeatureView upserts by name, mirroring `feast apply` semantics.
+func (p *Postgres) ApplyFeatureView(req api.ApplyFeatureViewRequest, actor string) (api.FeatureView, error) {
+	if req.Name == "" || req.Entity == "" || len(req.Fields) == 0 {
+		return api.FeatureView{}, errors.New("name, entity and at least one field are required")
+	}
+	for _, existing := range p.FeatureViews() {
+		if existing.Name == req.Name {
+			existing.Entity = req.Entity
+			existing.Fields = req.Fields
+			existing.Tags = req.Tags
+			existing.Source = req.Source
+			existing.TTLSeconds = req.TTLSeconds
+			return existing, p.write("feature_view", existing.ID, existing, "feature_view.applied", actor, nil)
+		}
+	}
+	view := api.FeatureView{ID: id("fv"), Name: req.Name, Entity: req.Entity, Fields: req.Fields, Tags: req.Tags, Source: req.Source, TTLSeconds: req.TTLSeconds, Status: "registered", CreatedAt: time.Now().UTC()}
+	return view, p.write("feature_view", view.ID, view, "feature_view.applied", actor, nil)
+}
+
+func (p *Postgres) ReportMaterialization(name string, entityCount int, actor string) (api.FeatureView, error) {
+	if entityCount < 0 {
+		return api.FeatureView{}, errors.New("entity_count cannot be negative")
+	}
+	for _, view := range p.FeatureViews() {
+		if view.Name == name {
+			now := time.Now().UTC()
+			view.Status = "materialized"
+			view.OnlineEntityCount = entityCount
+			view.MaterializedAt = &now
+			return view, p.write("feature_view", view.ID, view, "feature_view.materialized", actor, map[string]any{"entity_count": entityCount})
+		}
+	}
+	return api.FeatureView{}, ErrNotFound
+}
+
 func (p *Postgres) CreateConnection(req api.CreateConnectionRequest, actor string) (api.Connection, error) {
 	if req.Name == "" || req.Type == "" || req.SecretRef == "" {
 		return api.Connection{}, errors.New("name, type and secret_ref are required")

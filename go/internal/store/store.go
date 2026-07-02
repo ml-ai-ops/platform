@@ -26,6 +26,7 @@ type state struct {
 	Audit       []api.AuditEvent   `json:"audit"`
 	Sessions    []api.AgentSession `json:"sessions"`
 	Traces      []api.AgentTrace   `json:"traces"`
+	Features    []api.FeatureView  `json:"features"`
 }
 
 type Store struct {
@@ -315,6 +316,57 @@ func (s *Store) RecordTrace(req api.RecordTraceRequest) (api.AgentTrace, error) 
 		s.data.Sessions = append([]api.AgentSession{{ID: req.SessionID, AgentID: req.AgentID, UserID: req.UserID, Status: req.Status, CurrentNode: req.CurrentNode, Turns: 1, InputTokens: req.InputTokens, OutputTokens: req.OutputTokens, CostUSD: req.CostUSD, StartedAt: now, UpdatedAt: now}}, s.data.Sessions...)
 	}
 	return trace, s.persist()
+}
+
+func (s *Store) FeatureViews() []api.FeatureView {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return clone(s.data.Features)
+}
+
+// ApplyFeatureView upserts by name, mirroring `feast apply` semantics: the
+// definition is declarative and re-applying replaces fields while keeping
+// identity and materialization history.
+func (s *Store) ApplyFeatureView(req api.ApplyFeatureViewRequest, actor string) (api.FeatureView, error) {
+	if req.Name == "" || req.Entity == "" || len(req.Fields) == 0 {
+		return api.FeatureView{}, errors.New("name, entity and at least one field are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Features {
+		if s.data.Features[i].Name == req.Name {
+			s.data.Features[i].Entity = req.Entity
+			s.data.Features[i].Fields = req.Fields
+			s.data.Features[i].Tags = req.Tags
+			s.data.Features[i].Source = req.Source
+			s.data.Features[i].TTLSeconds = req.TTLSeconds
+			s.record("feature_view.applied", "feature_view", s.data.Features[i].ID, actor, nil)
+			return s.data.Features[i], s.persist()
+		}
+	}
+	view := api.FeatureView{ID: id("fv"), Name: req.Name, Entity: req.Entity, Fields: req.Fields, Tags: req.Tags, Source: req.Source, TTLSeconds: req.TTLSeconds, Status: "registered", CreatedAt: time.Now().UTC()}
+	s.data.Features = append([]api.FeatureView{view}, s.data.Features...)
+	s.record("feature_view.applied", "feature_view", view.ID, actor, nil)
+	return view, s.persist()
+}
+
+func (s *Store) ReportMaterialization(name string, entityCount int, actor string) (api.FeatureView, error) {
+	if entityCount < 0 {
+		return api.FeatureView{}, errors.New("entity_count cannot be negative")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Features {
+		if s.data.Features[i].Name == name {
+			now := time.Now().UTC()
+			s.data.Features[i].Status = "materialized"
+			s.data.Features[i].OnlineEntityCount = entityCount
+			s.data.Features[i].MaterializedAt = &now
+			s.record("feature_view.materialized", "feature_view", s.data.Features[i].ID, actor, map[string]any{"entity_count": entityCount})
+			return s.data.Features[i], s.persist()
+		}
+	}
+	return api.FeatureView{}, ErrNotFound
 }
 
 func (s *Store) SetAgentTraffic(agentID string, weight int, actor string) (api.Agent, error) {

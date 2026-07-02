@@ -11,7 +11,34 @@ import (
 )
 
 func main() {
-	store := feature.NewMemoryStore()
+	// Serving mode, most real first:
+	//   FEAST_URL  -> delegate to a running Feast feature server
+	//   REDIS_URL  -> direct Redis lookups on the platform key convention
+	//   otherwise  -> in-memory store (tests and dependency-free development)
+	var store feature.Store
+	var lookup func(feature.Request) (feature.Response, error)
+	mode := "memory"
+	switch {
+	case os.Getenv("FEAST_URL") != "":
+		client := feature.NewFeastClient(os.Getenv("FEAST_URL"))
+		lookup, mode = client.Lookup, "feast"
+	case os.Getenv("REDIS_URL") != "":
+		redisStore, err := feature.NewRedisStore(os.Getenv("REDIS_URL"), 0)
+		if err != nil {
+			log.Fatalf("invalid REDIS_URL: %v", err)
+		}
+		store, mode = redisStore, "redis"
+		lookup = func(request feature.Request) (feature.Response, error) {
+			return feature.Lookup(redisStore, request)
+		}
+	default:
+		memory := feature.NewMemoryStore()
+		store = memory
+		lookup = func(request feature.Request) (feature.Response, error) {
+			return feature.Lookup(memory, request)
+		}
+	}
+	log.Printf("feature-gateway online store mode: %s", mode)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("POST /get-online-features", func(w http.ResponseWriter, r *http.Request) {
@@ -20,7 +47,7 @@ func main() {
 			fail(w, http.StatusBadRequest, err)
 			return
 		}
-		response, err := feature.Lookup(store, request)
+		response, err := lookup(request)
 		if err != nil {
 			fail(w, http.StatusUnprocessableEntity, err)
 			return
@@ -30,6 +57,10 @@ func main() {
 	mux.HandleFunc("PUT /internal/v1/features/{service}/{entity}", func(w http.ResponseWriter, r *http.Request) {
 		if !authorized(r) {
 			fail(w, http.StatusUnauthorized, errText("unauthorized"))
+			return
+		}
+		if store == nil {
+			fail(w, http.StatusNotImplemented, errText("materialization writes go through Feast in feast mode"))
 			return
 		}
 		var values map[string]any

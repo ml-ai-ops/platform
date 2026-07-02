@@ -214,6 +214,41 @@ type RecordTraceRequest struct {
 	Metadata     map[string]any `json:"metadata,omitempty"`
 }
 
+// FeatureView is the control-plane record of a feature store view: what the
+// catalog shows and what materialization jobs report against. The data itself
+// lives in the online (Redis/Feast) and offline (Parquet on S3) stores.
+type FeatureView struct {
+	ID                string         `json:"id"`
+	Name              string         `json:"name"`
+	Entity            string         `json:"entity"`
+	Fields            []FeatureField `json:"fields"`
+	Tags              []string       `json:"tags"`
+	Source            string         `json:"source"`
+	TTLSeconds        int            `json:"ttl_seconds"`
+	Status            string         `json:"status"`
+	OnlineEntityCount int            `json:"online_entity_count"`
+	MaterializedAt    *time.Time     `json:"materialized_at,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+}
+
+type FeatureField struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type ApplyFeatureViewRequest struct {
+	Name       string         `json:"name"`
+	Entity     string         `json:"entity"`
+	Fields     []FeatureField `json:"fields"`
+	Tags       []string       `json:"tags"`
+	Source     string         `json:"source"`
+	TTLSeconds int            `json:"ttl_seconds"`
+}
+
+type MaterializationReport struct {
+	EntityCount int `json:"entity_count"`
+}
+
 type InvokeAgentRequest struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id,omitempty"`

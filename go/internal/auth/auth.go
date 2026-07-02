@@ -187,7 +187,7 @@ func Allowed(principal Principal, method, path string) bool {
 			if method == http.MethodGet {
 				return true
 			}
-			for _, prefix := range []string{"/api/v1/projects", "/api/v1/pipelines", "/api/v1/models", "/api/v1/agents", "/api/v1/tools"} {
+			for _, prefix := range []string{"/api/v1/projects", "/api/v1/pipelines", "/api/v1/models", "/api/v1/agents", "/api/v1/tools", "/api/v1/features", "/api/v1/traces"} {
 				if strings.HasPrefix(path, prefix) {
 					return true
 				}

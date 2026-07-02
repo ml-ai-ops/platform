@@ -39,6 +39,13 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/v1/pipelines/runs/{id}/retry", server.retryRun)
 	mux.HandleFunc("GET /api/v1/components", server.components)
 	mux.HandleFunc("GET /api/v1/catalog", server.catalog)
+	mux.HandleFunc("GET /api/v1/features", server.features)
+	mux.HandleFunc("POST /api/v1/features", server.applyFeatureView)
+	mux.HandleFunc("POST /api/v1/features/{name}/materialized", server.reportMaterialization)
+	mux.HandleFunc("GET /api/v1/storage/buckets", server.storageProxy("/buckets"))
+	mux.HandleFunc("GET /api/v1/storage/objects", server.storageProxy("/objects"))
+	mux.HandleFunc("GET /api/v1/storage/object", server.storageProxy("/object"))
+	mux.HandleFunc("GET /api/v1/prompts", server.prompts)
 	mux.HandleFunc("GET /api/v1/models", server.models)
 	mux.HandleFunc("POST /api/v1/models", server.registerModel)
 	mux.HandleFunc("POST /api/v1/models/{id}/promote", server.promoteModel)
@@ -68,7 +75,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, _ *http.Request) {
-	projects, runs, components := s.store.Projects(), s.store.Runs(), platform.Components()
+	projects, runs, components := s.store.Projects(), s.store.Runs(), platform.Components(s.store.Connections())
 	active, healthy := 0, 0
 	for _, run := range runs {
 		if run.Status == "running" || run.Status == "queued" {
@@ -177,11 +184,11 @@ func (s *Server) submitPipeline(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) components(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, platform.Components())
+	writeJSON(w, http.StatusOK, platform.Components(s.store.Connections()))
 }
 
 func (s *Server) catalog(w http.ResponseWriter, r *http.Request) {
-	items, kind := platform.Catalog(), r.URL.Query().Get("kind")
+	items, kind := platform.Catalog(s.store), r.URL.Query().Get("kind")
 	if kind == "" {
 		writeJSON(w, http.StatusOK, items)
 		return
@@ -193,6 +200,101 @@ func (s *Server) catalog(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, filtered)
+}
+
+func (s *Server) features(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.FeatureViews()
+	writeJSON(w, http.StatusOK, api.Page[api.FeatureView]{Items: items, Total: len(items)})
+}
+
+func (s *Server) applyFeatureView(w http.ResponseWriter, r *http.Request) {
+	var req api.ApplyFeatureViewRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.ApplyFeatureView(req, actor(r))
+	writeMutation(w, item, err, http.StatusCreated)
+}
+
+func (s *Server) reportMaterialization(w http.ResponseWriter, r *http.Request) {
+	var req api.MaterializationReport
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.ReportMaterialization(r.PathValue("name"), req.EntityCount, actor(r))
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+// storageProxy forwards Storage Explorer reads to the storage proxy, which is
+// the sole holder of object-store credentials (PRD section 5.2.5).
+func (s *Server) storageProxy(path string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		base := os.Getenv("STORAGE_PROXY_URL")
+		if base == "" {
+			base = "http://localhost:8084"
+		}
+		target := strings.TrimRight(base, "/") + path
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "storage_unreachable", err.Error())
+			return
+		}
+		if token := os.Getenv("MLAIOPS_INTERNAL_TOKEN"); token != "" {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		client := &http.Client{Timeout: 20 * time.Second}
+		response, err := client.Do(request)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "storage_unreachable", err.Error())
+			return
+		}
+		defer func() { _ = response.Body.Close() }()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(response.StatusCode)
+		_, _ = io.Copy(w, response.Body)
+	}
+}
+
+// prompts proxies Langfuse prompt management for the console's Prompt
+// Library. Reports configured=false honestly instead of inventing data.
+func (s *Server) prompts(w http.ResponseWriter, r *http.Request) {
+	base := os.Getenv("LANGFUSE_URL")
+	public := os.Getenv("LANGFUSE_PUBLIC_KEY")
+	secret := os.Getenv("LANGFUSE_SECRET_KEY")
+	if base == "" || public == "" || secret == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"configured": false, "items": []any{}})
+		return
+	}
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, strings.TrimRight(base, "/")+"/api/public/v2/prompts", nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "langfuse_unreachable", err.Error())
+		return
+	}
+	request.SetBasicAuth(public, secret)
+	client := &http.Client{Timeout: 10 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "langfuse_unreachable", err.Error())
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "langfuse_error", response.Status)
+		return
+	}
+	var payload struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadGateway, "langfuse_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "items": payload.Data})
 }
 
 func (s *Server) models(w http.ResponseWriter, _ *http.Request) {

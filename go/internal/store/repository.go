@@ -27,4 +27,7 @@ type Repository interface {
 	AgentSessions(string) []api.AgentSession
 	AgentTraces(string) []api.AgentTrace
 	RecordTrace(api.RecordTraceRequest) (api.AgentTrace, error)
+	FeatureViews() []api.FeatureView
+	ApplyFeatureView(api.ApplyFeatureViewRequest, string) (api.FeatureView, error)
+	ReportMaterialization(string, int, string) (api.FeatureView, error)
 }

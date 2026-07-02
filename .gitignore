@@ -32,3 +32,5 @@ htmlcov/
 .coverage
 bin/
 data/
+.tools/
+.tools.nosync/

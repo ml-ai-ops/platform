@@ -14,3 +14,8 @@ done
 
 export TEST_DATABASE_URL="postgres://mlaiops:mlaiops-local@localhost:${POSTGRES_PORT}/mlaiops?sslmode=disable"
 (cd go && go test -buildvcs=false -tags=integration ./integration)
+
+# pgvector round-trip for agent semantic memory (skipped automatically when
+# the DSN is absent; provided here because the compose postgres ships pgvector).
+export TEST_MEMORY_DSN="postgresql://mlaiops:mlaiops-local@localhost:${POSTGRES_PORT}/mlaiops"
+python3 -m pytest python/tests/test_agents.py -q -k pgvector

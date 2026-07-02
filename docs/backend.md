@@ -34,10 +34,17 @@ Kafka outbox entries in one transaction. Local file mode remains available throu
 | Projects | create, list |
 | Pipelines | submit, inspect DAG/logs, cancel, retry, compare parent runs |
 | Models | register, evaluate gates, promote, deploy canary, rollback |
-| Agents | deploy, list, set traffic, sessions, traces, token/cost usage |
+| Agents | deploy, list, invoke (runtime proxy), set traffic, sessions, traces, token/cost usage |
+| Feature views | apply (upsert), list, report materialization |
+| Storage | list buckets, list objects by prefix, bounded object preview (proxied to storage-proxy) |
+| Prompts | list Langfuse-managed prompts (reports `configured:false` when Langfuse is absent) |
 | Tools | register typed schema, list |
 | Connections | create secret reference, list |
 | Audit | ordered event list |
+
+The component health grid and shared catalog are derived from live state: components turn
+healthy only when a checked connection succeeds, and the catalog lists only models, feature
+views, agents, and tools that exist.
 
 Set `X-MLAIOps-Actor` on mutation requests for audit attribution. Secrets are represented only
 by Kubernetes Secret references; raw credentials are never accepted by the control-plane API.
@@ -74,6 +81,11 @@ stages, and creates KServe `InferenceService` resources.
 | `DATABASE_URL` | gateway | PostgreSQL connection string; enables production repository |
 | `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` | gateway | JWT verification contract |
 | `MLAIOPS_INTERNAL_TOKEN` | feature/storage | Internal API bearer token |
+| `FEAST_URL` | feature gateway | Delegate lookups to a running Feast feature server |
+| `REDIS_URL` | feature gateway | Direct Redis online store (platform key convention) |
+| `AGENT_RUNTIME_URL` | gateway | Agent runtime address for `/agents/{id}/invoke` |
+| `STORAGE_PROXY_URL` | gateway | Storage proxy address for `/api/v1/storage/*` |
+| `LANGFUSE_URL`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | gateway | Prompt Library proxy |
 | `S3_ENDPOINT` | storage proxy | MinIO or S3-compatible endpoint |
 | `S3_REGION` | storage proxy | S3 signing region |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | storage proxy | Inject from Vault/Kubernetes Secret |
