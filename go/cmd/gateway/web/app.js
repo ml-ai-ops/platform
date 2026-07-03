@@ -309,6 +309,7 @@ const menuDefs = {
   ],
   help: () => [
     {label: "API Reference ↗", run: () => window.open("/api/openapi.json", "_blank")},
+    {label: "Jupyter Workbench ↗", run: () => window.open(`http://${location.hostname}:8888`, "_blank")},
     {label: "Hosting & Docs ↗", run: () => window.open("https://github.com/Markkimotho/mlops#readme", "_blank")},
     {label: "About Nexus", run: showAbout},
   ],
@@ -341,6 +342,7 @@ document.querySelectorAll("[data-menu]").forEach(button => button.addEventListen
 document.addEventListener("click", () => { if (openMenu) closeMenu(); });
 document.addEventListener("keydown", event => { if (event.key === "Escape" && openMenu) closeMenu(); });
 
+document.querySelector("#workbench-link").href = `http://${location.hostname}:8888`;
 document.querySelector("#sidebar-collapse").addEventListener("click", toggleSidebar);
 document.querySelector("#go-overview").addEventListener("click", () => showView("overview"));
 
