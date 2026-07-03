@@ -310,7 +310,7 @@ const menuDefs = {
   help: () => [
     {label: "API Reference ↗", run: () => window.open("/api/openapi.json", "_blank")},
     {label: "Jupyter Workbench ↗", run: () => window.open(`http://${location.hostname}:8888`, "_blank")},
-    {label: "Hosting & Docs ↗", run: () => window.open("https://github.com/ml-ai-ops/mlops#readme", "_blank")},
+    {label: "Hosting & Docs ↗", run: () => window.open("https://github.com/ml-ai-ops/platform#readme", "_blank")},
     {label: "About Nexus", run: showAbout},
   ],
 };

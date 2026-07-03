@@ -22,8 +22,8 @@ Nexus runs as one Docker Compose stack. The fastest path to a working platform i
 ## Fastest path: the full stack
 
 ```bash
-git clone https://github.com/ml-ai-ops/mlops.git
-cd mlops
+git clone https://github.com/ml-ai-ops/platform.git
+cd platform
 make local-up
 ```
 

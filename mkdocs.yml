@@ -4,8 +4,8 @@ site_description: >-
   Compose stack from laptop to public VM. Full documentation: architecture,
   services, modules, installation, configuration, API, RBAC, and operations.
 site_author: Nexus platform team
-repo_name: ml-ai-ops/mlops
-repo_url: https://github.com/ml-ai-ops/mlops
+repo_name: ml-ai-ops/platform
+repo_url: https://github.com/ml-ai-ops/platform
 edit_uri: edit/main/docs/
 docs_dir: docs
 copyright: Nexus is a self-hosted platform. Local credentials in this documentation are development defaults — override every one for public deployments.
