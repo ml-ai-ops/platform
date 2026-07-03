@@ -20,14 +20,14 @@ type CreateProjectRequest struct {
 }
 
 type PipelineRun struct {
-	ID          string         `json:"id"`
-	ProjectID   string         `json:"project_id"`
-	Name        string         `json:"name"`
-	Status      string         `json:"status"`
-	Progress    int            `json:"progress"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	ParentRunID string         `json:"parent_run_id,omitempty"`
+	ID          string    `json:"id"`
+	ProjectID   string    `json:"project_id"`
+	Name        string    `json:"name"`
+	Status      string    `json:"status"`
+	Progress    int       `json:"progress"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	ParentRunID string    `json:"parent_run_id,omitempty"`
 	// EngineRunID links the control-plane run to the execution engine's run
 	// (Prefect flow run id locally, KFP run id on Kubernetes).
 	EngineRunID string         `json:"engine_run_id,omitempty"`

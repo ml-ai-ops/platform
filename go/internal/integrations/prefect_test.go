@@ -57,6 +57,18 @@ func TestPrefectCreateFlowRun(t *testing.T) {
 	}
 }
 
+func TestPrefectAcceptsAPIConventionURL(t *testing.T) {
+	server := fakePrefect(t, true)
+	defer server.Close()
+	// PREFECT_API_URL conventionally ends in /api; the client must not
+	// produce /api/api/... paths.
+	prefect := NewPrefect(server.URL+"/api", "")
+	id, err := prefect.CreateFlowRun(context.Background(), "training-pipeline", "mlaiops", "run-42", map[string]any{"run_id": "run-42"})
+	if err != nil || id != "fr-9" {
+		t.Fatalf("unexpected result: %q %v", id, err)
+	}
+}
+
 func TestPrefectMissingDeploymentFailsClosed(t *testing.T) {
 	server := fakePrefect(t, false)
 	defer server.Close()

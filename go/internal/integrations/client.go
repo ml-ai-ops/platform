@@ -91,7 +91,11 @@ func (l Langfuse) Ingest(ctx context.Context, batch []map[string]any) error {
 // remains the Kubernetes path).
 type Prefect struct{ client *Client }
 
-func NewPrefect(baseURL, token string) Prefect { return Prefect{client: New(baseURL, token)} }
+// NewPrefect accepts the Prefect convention (PREFECT_API_URL ends in /api)
+// as well as a bare server URL; client paths always include /api.
+func NewPrefect(baseURL, token string) Prefect {
+	return Prefect{client: New(strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/api"), token)}
+}
 
 // CreateFlowRun resolves a deployment by flow/deployment name and creates a
 // flow run carrying the control-plane run id as a parameter so the flow can

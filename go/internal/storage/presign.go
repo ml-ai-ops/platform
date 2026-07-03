@@ -55,7 +55,10 @@ func Presign(config Config, request Request, now time.Time) (string, error) {
 	now = now.UTC()
 	date, timestamp := now.Format("20060102"), now.Format("20060102T150405Z")
 	scope := fmt.Sprintf("%s/%s/s3/aws4_request", date, config.Region)
-	endpoint.Path = path.Join(endpoint.Path, request.Bucket, request.Key)
+	// path.Join drops the leading slash when the base path is empty; the
+	// canonical request must sign the absolute path or S3 rejects the
+	// signature.
+	endpoint.Path = path.Join("/", endpoint.Path, request.Bucket, request.Key)
 	query := endpoint.Query()
 	query.Set("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
 	query.Set("X-Amz-Credential", config.AccessKey+"/"+scope)

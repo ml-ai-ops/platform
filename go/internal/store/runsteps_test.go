@@ -32,10 +32,17 @@ func TestUpdateRunStepDrivesRunLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// register-model is still pending: the run must NOT complete early.
+	if updated.Status != "running" {
+		t.Fatalf("run must wait for every templated step: %s", updated.Status)
+	}
+	if updated, err = s.UpdateRunStep(run.ID, api.UpdateRunStepRequest{Step: "register-model", Status: "succeeded"}, "flow"); err != nil {
+		t.Fatal(err)
+	}
 	if updated.Status != "succeeded" || updated.Progress != 100 {
 		t.Fatalf("run should be complete: status=%s progress=%d", updated.Status, updated.Progress)
 	}
-	if len(updated.Logs) < 4 {
+	if len(updated.Logs) < 5 {
 		t.Fatalf("step transitions must be logged, got %d entries", len(updated.Logs))
 	}
 }
@@ -57,14 +64,14 @@ func TestUpdateRunStepFailureFailsRun(t *testing.T) {
 func TestUpdateRunStepAppendsUnknownSteps(t *testing.T) {
 	s := New()
 	run := submitTestRun(t, s)
-	updated, err := s.UpdateRunStep(run.ID, api.UpdateRunStepRequest{Step: "register-model", Status: "succeeded"}, "flow")
+	updated, err := s.UpdateRunStep(run.ID, api.UpdateRunStepRequest{Step: "publish-report", Status: "succeeded"}, "flow")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(updated.Steps) != 4 {
+	if len(updated.Steps) != 5 {
 		t.Fatalf("dynamic step should be appended, got %d steps", len(updated.Steps))
 	}
-	if updated.Progress != 25 {
+	if updated.Progress != 20 {
 		t.Fatalf("progress must count completed/total: %d", updated.Progress)
 	}
 }
@@ -77,6 +84,24 @@ func TestUpdateRunStepValidation(t *testing.T) {
 	}
 	if _, err := s.UpdateRunStep("run-missing", api.UpdateRunStepRequest{Step: "x", Status: "running"}, "flow"); err != ErrNotFound {
 		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestSessionsScopedPerAgent(t *testing.T) {
+	s := New()
+	// Same session id reported by two different agents must produce two
+	// separate sessions, each with its own accounting.
+	for _, agentID := range []string{"agt-1", "agt-2"} {
+		if _, err := s.RecordTrace(api.RecordTraceRequest{AgentID: agentID, SessionID: "shared-id", Status: "succeeded", InputTokens: 5, OutputTokens: 5}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, second := s.AgentSessions("agt-1"), s.AgentSessions("agt-2")
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("each agent must own its session: %d %d", len(first), len(second))
+	}
+	if first[0].Turns != 1 || second[0].Turns != 1 {
+		t.Fatalf("turns must not leak across agents: %d %d", first[0].Turns, second[0].Turns)
 	}
 }
 

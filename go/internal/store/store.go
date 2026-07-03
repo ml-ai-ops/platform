@@ -425,8 +425,10 @@ func (s *Store) RecordTrace(req api.RecordTraceRequest) (api.AgentTrace, error) 
 	trace := api.AgentTrace{ID: id("trace"), AgentID: req.AgentID, SessionID: req.SessionID, Name: req.Name, Status: req.Status, DurationMS: req.DurationMS, Tokens: req.InputTokens + req.OutputTokens, Metadata: req.Metadata, CreatedAt: now}
 	s.data.Traces = append([]api.AgentTrace{trace}, s.data.Traces...)
 	found := false
+	// Sessions are scoped per agent: the same session id under two agents is
+	// two sessions.
 	for i := range s.data.Sessions {
-		if s.data.Sessions[i].ID == req.SessionID {
+		if s.data.Sessions[i].ID == req.SessionID && s.data.Sessions[i].AgentID == req.AgentID {
 			s.data.Sessions[i].CurrentNode, s.data.Sessions[i].Status, s.data.Sessions[i].UpdatedAt = req.CurrentNode, req.Status, now
 			s.data.Sessions[i].Turns++
 			s.data.Sessions[i].InputTokens += req.InputTokens
@@ -613,7 +615,10 @@ func slug(value string) string {
 }
 
 func defaultSteps(status string) []api.PipelineStep {
-	steps := []api.PipelineStep{{Name: "validate-data", Status: status, Image: "mlaiops/data-validator:latest", Progress: 0}, {Name: "train-model", Status: status, Image: "mlaiops/trainer:latest", DependsOn: []string{"validate-data"}, Progress: 0}, {Name: "evaluate", Status: status, Image: "mlaiops/evaluator:latest", DependsOn: []string{"train-model"}, Progress: 0}}
+	// Must mirror the steps python/pipelines/training.py reports: the run only
+	// completes when every templated step has reported, so a partial template
+	// would mark the run succeeded while later steps are still executing.
+	steps := []api.PipelineStep{{Name: "validate-data", Status: status, Image: "mlaiops/pipeline-runner:latest", Progress: 0}, {Name: "train-model", Status: status, Image: "mlaiops/pipeline-runner:latest", DependsOn: []string{"validate-data"}, Progress: 0}, {Name: "evaluate", Status: status, Image: "mlaiops/pipeline-runner:latest", DependsOn: []string{"train-model"}, Progress: 0}, {Name: "register-model", Status: status, Image: "mlaiops/pipeline-runner:latest", DependsOn: []string{"evaluate"}, Progress: 0}}
 	if status == "succeeded" {
 		for i := range steps {
 			steps[i].Progress = 100

@@ -233,6 +233,7 @@ func (p *Postgres) DeployModel(modelID string, weight int, actor string) (api.Mo
 	model.DeploymentStatus, model.CanaryWeight, model.EndpointURL = "deploying", weight, "/v1/models/"+model.Name+":predict"
 	return model, p.write("model", model.ID, model, "model.deployed", actor, map[string]any{"canary_weight": weight})
 }
+
 // SetModelEndpoint records the live serving endpoint after the serving
 // manager has actually started the model server.
 func (p *Postgres) SetModelEndpoint(modelID, endpoint, status string) (api.Model, error) {
@@ -380,7 +381,11 @@ func (p *Postgres) RecordTrace(req api.RecordTraceRequest) (api.AgentTrace, erro
 	if err := p.write("agent_trace", trace.ID, trace, "agent.trace_recorded", "trace-proxy", nil); err != nil {
 		return trace, err
 	}
-	session, err := get[api.AgentSession](p, "agent_session", req.SessionID)
+	// Sessions are scoped per agent: two agents may legitimately use the same
+	// session id (e.g. a shared conversation id), so the resource key is the
+	// composite while the exposed session id stays client-chosen.
+	sessionKey := req.AgentID + "/" + req.SessionID
+	session, err := get[api.AgentSession](p, "agent_session", sessionKey)
 	if errors.Is(err, ErrNotFound) {
 		session = api.AgentSession{ID: req.SessionID, AgentID: req.AgentID, UserID: req.UserID, StartedAt: now}
 	} else if err != nil {
@@ -391,7 +396,7 @@ func (p *Postgres) RecordTrace(req api.RecordTraceRequest) (api.AgentTrace, erro
 	session.InputTokens += req.InputTokens
 	session.OutputTokens += req.OutputTokens
 	session.CostUSD += req.CostUSD
-	return trace, p.write("agent_session", session.ID, session, "agent.session_updated", "trace-proxy", nil)
+	return trace, p.write("agent_session", sessionKey, session, "agent.session_updated", "trace-proxy", nil)
 }
 
 func (p *Postgres) write(kind, resourceID string, value any, action, actor string, metadata map[string]any) error {

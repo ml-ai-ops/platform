@@ -219,7 +219,7 @@ func (s *Server) submitPipeline(w http.ResponseWriter, r *http.Request) {
 	// (run marked failed) when the engine rejects the submission.
 	if prefectURL := os.Getenv("PREFECT_API_URL"); prefectURL != "" {
 		prefect := integrations.NewPrefect(prefectURL, "")
-		engineID, submitErr := prefect.CreateFlowRun(r.Context(), run.Name, "mlaiops", run.ID, map[string]any{"run_id": run.ID})
+		engineID, submitErr := prefect.CreateFlowRun(r.Context(), run.Name, "mlaiops", run.ID, map[string]any{"run_id": run.ID, "project_id": run.ProjectID})
 		if submitErr != nil {
 			run, _ = s.store.UpdateRunStep(run.ID, api.UpdateRunStepRequest{Step: "submit-to-engine", Status: "failed", Message: submitErr.Error()}, "system")
 			writeJSON(w, http.StatusAccepted, run)
@@ -684,6 +684,7 @@ func (s *Server) agentTraffic(w http.ResponseWriter, r *http.Request) {
 	item, err := s.store.SetAgentTraffic(r.PathValue("id"), req.CanaryWeight, actor(r))
 	writeMutation(w, item, err, http.StatusOK)
 }
+
 // invokeAgent proxies a test-console or SDK turn to the agent runtime, which
 // executes the LangGraph graph and reports the session back through
 // POST /api/v1/traces. The runtime address comes from AGENT_RUNTIME_URL.
