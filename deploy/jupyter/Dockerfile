@@ -23,6 +23,15 @@ RUN pip install --no-cache-dir \
     "prefect>=3.0" \
     "redis>=5"
 
+ARG TARGETARCH
+ARG NODE_VERSION=22.17.0
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends xz-utils \
+ && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${TARGETARCH}.tar.xz" \
+    | tar -xJ --strip-components=1 -C /usr/local \
+ && npm install -g @openai/codex@0.142.5 @anthropic-ai/claude-code@2.1.200 \
+ && rm -rf /var/lib/apt/lists/* /root/.npm
+
 # The platform SDK and the runnable platform modules (features, realtime,
 # pipelines, agents) so notebooks and the terminal can drive the whole stack.
 COPY python/pyproject.toml /opt/platform/python/pyproject.toml
@@ -32,10 +41,13 @@ COPY python/realtime /opt/platform/python/realtime
 COPY python/pipelines /opt/platform/python/pipelines
 COPY python/agents /opt/platform/python/agents
 RUN pip install --no-cache-dir "/opt/platform/python[agents]"
+RUN pip install --no-cache-dir "jupyter-ai==3.0.1"
 
 COPY deploy/jupyter/quickstart.ipynb /opt/seed/quickstart.ipynb
 COPY deploy/jupyter/entrypoint.sh /usr/local/bin/workbench
+COPY deploy/workspace/nexus.py /usr/local/bin/nexus
 RUN chmod +x /usr/local/bin/workbench \
+ && chmod +x /usr/local/bin/nexus \
  && useradd --create-home --uid 1000 dev \
  && mkdir -p /workspace /workspace/object-store \
  && chown -R dev:dev /workspace

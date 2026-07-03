@@ -9,6 +9,8 @@ environment. It also provides the **terminal** for shell-based dev work.
 - **Build:** `deploy/jupyter/Dockerfile` (Python 3.11)
 - **Persistence:** your work lives in the `jupyter-data` volume across restarts
 - **Object store mount:** `/workspace/object-store/<bucket>`
+- **AI chat:** Jupyter AI chat panel in the left sidebar
+- **Coding agents:** `codex`, `claude`, and the `nexus` scaffolder in terminals
 
 Each MinIO/S3 bucket is mounted as a directory, so notebook code can use normal
 filesystem APIs:
@@ -54,7 +56,30 @@ S3FS; these permissions must not be copied to other platform services.
 python -m realtime.produce --demo fraud --count 5
 python -m realtime.produce --demo callcenter --count 2
 curl -s "$MLAIOPS_URL/api/v1/models" | python -m json.tool
+nexus agents
+nexus scaffold fraud-api --template api --prompt "Create a fraud scoring API"
 ```
+
+Use `--agent codex` or `--agent claude` to let the selected coding agent
+complete the generated starter:
+
+```bash
+nexus scaffold support-agent \
+  --template agent \
+  --agent codex \
+  --prompt "Build a tested support agent with retrieval and escalation"
+```
+
+The command confines the agent to the newly generated project directory.
+Provider credentials come from `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+
+## Natural-language coding
+
+Open the **Jupyter AI** chat panel from the left sidebar, select the OpenAI or
+Anthropic provider, and describe the analysis or code you need. The chat can
+reference notebook cells and generate code without leaving JupyterLab. For
+repository-wide edits, open a terminal and run `codex`, `claude`, or
+`nexus scaffold`.
 
 ## The seeded quickstart
 

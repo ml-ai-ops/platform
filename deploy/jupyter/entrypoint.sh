@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
+mkdir -p /home/dev/.codex /home/dev/.claude
+chown -R dev:dev /home/dev/.codex /home/dev/.claude
+
 mount_root="${S3_MOUNT_ROOT:-/workspace/object-store}"
 mount_buckets="${S3_MOUNT_BUCKETS:-mlaiops-models mlaiops-artifacts mlaiops-features mlaiops-traces mlaiops-agents mlaiops-pipeline-logs}"
 

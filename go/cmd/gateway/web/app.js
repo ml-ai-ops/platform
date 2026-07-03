@@ -328,6 +328,7 @@ async function showAbout() {
 }
 
 document.querySelector("#workbench-link").href = `http://${location.hostname}:8888`;
+document.querySelector("#ide-link").href = `http://${location.hostname}:13337`;
 sidebarToggle.addEventListener("click", toggleSidebar);
 document.querySelector("#refresh-view").addEventListener("click", () => (viewLoaders[activeView] || loadDashboard)().then(() => toast("View refreshed.")).catch(error => toast(error.message)));
 document.querySelector("#open-help").addEventListener("click", () => showAbout().catch(error => toast(error.message)));

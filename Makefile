@@ -1,4 +1,4 @@
-.PHONY: install run test test-go test-python test-integration test-load test-e2e lint format build verify local-up local-down kind-up docs-install docs-serve docs-build
+.PHONY: install run test test-go test-python test-integration test-load test-e2e lint format build verify local-up local-down ide-up ide-down kind-up docs-install docs-serve docs-build
 
 install:
 	python -m pip install -r requirements.txt
@@ -49,6 +49,12 @@ local-up:
 
 local-down:
 	docker compose -f deploy/compose.yaml down
+
+ide-up:
+	docker compose -f deploy/compose.yaml --profile ide up -d --build ide
+
+ide-down:
+	docker compose -f deploy/compose.yaml --profile ide stop ide
 
 public-up:
 	bash deploy/public-up.sh
