@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mlaiops/platform/pkg/api"
+	"github.com/ml-ai-ops/platform/pkg/api"
 )
 
 var ErrNotFound = errors.New("resource not found")

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/mlaiops/platform/internal/store"
+	"github.com/ml-ai-ops/platform/internal/store"
 )
 
 func testServer() http.Handler {

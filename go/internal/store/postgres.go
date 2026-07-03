@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mlaiops/platform/pkg/api"
+	"github.com/ml-ai-ops/platform/pkg/api"
 )
 
 //go:embed migrations/*.sql

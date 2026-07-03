@@ -1,6 +1,6 @@
 package store
 
-import "github.com/mlaiops/platform/pkg/api"
+import "github.com/ml-ai-ops/platform/pkg/api"
 
 type Repository interface {
 	Projects() []api.Project

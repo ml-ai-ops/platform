@@ -1,6 +1,6 @@
 # Go packages
 
-The Go module is `github.com/mlaiops/platform` (Go 1.23). Its only third-party
+The Go module is `github.com/ml-ai-ops/platform` (Go 1.23). Its only third-party
 dependency is `github.com/jackc/pgx/v5` (Postgres). Commands live under `go/cmd/`,
 reusable logic under `go/internal/`, and public API types under `go/pkg/`.
 

@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/mlaiops/platform/internal/storage"
+	"github.com/ml-ai-ops/platform/internal/storage"
 )
 
 func main() {

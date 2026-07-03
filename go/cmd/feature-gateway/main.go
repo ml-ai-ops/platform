@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/mlaiops/platform/internal/feature"
+	"github.com/ml-ai-ops/platform/internal/feature"
 )
 
 func main() {

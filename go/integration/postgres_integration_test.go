@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mlaiops/platform/internal/store"
-	"github.com/mlaiops/platform/pkg/api"
+	"github.com/ml-ai-ops/platform/internal/store"
+	"github.com/ml-ai-ops/platform/pkg/api"
 )
 
 func TestPostgresPersistsResourceAuditAndOutboxAtomically(t *testing.T) {

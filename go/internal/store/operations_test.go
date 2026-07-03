@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/mlaiops/platform/pkg/api"
+	"github.com/ml-ai-ops/platform/pkg/api"
 )
 
 func TestOperationalLifecycle(t *testing.T) {

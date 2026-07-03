@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 
-	"github.com/mlaiops/platform/internal/integrations"
+	"github.com/ml-ai-ops/platform/internal/integrations"
 )
 
 func main() {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mlaiops/platform/pkg/api"
+	"github.com/ml-ai-ops/platform/pkg/api"
 )
 
 func TestStorePersistsResourcesAndAudit(t *testing.T) {

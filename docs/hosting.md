@@ -24,7 +24,7 @@ Internet ──► Caddy (443, auto Let's Encrypt TLS)
 1. Clone the repository on the VM and create the environment file:
 
    ```bash
-   git clone git@github.com:Markkimotho/mlops.git && cd mlops
+   git clone git@github.com:ml-ai-ops/mlops.git && cd mlops
    cp .env.example .env
    ```
 

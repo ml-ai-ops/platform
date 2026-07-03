@@ -14,9 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/mlaiops/platform/internal/integrations"
-	platformoperator "github.com/mlaiops/platform/internal/operator"
-	mlaiopsv1 "github.com/mlaiops/platform/pkg/kube/v1alpha1"
+	"github.com/ml-ai-ops/platform/internal/integrations"
+	platformoperator "github.com/ml-ai-ops/platform/internal/operator"
+	mlaiopsv1 "github.com/ml-ai-ops/platform/pkg/kube/v1alpha1"
 )
 
 func main() {

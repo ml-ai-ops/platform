@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mlaiops/platform/internal/auth"
-	"github.com/mlaiops/platform/internal/httpapi"
-	"github.com/mlaiops/platform/internal/integrations"
-	"github.com/mlaiops/platform/internal/store"
+	"github.com/ml-ai-ops/platform/internal/auth"
+	"github.com/ml-ai-ops/platform/internal/httpapi"
+	"github.com/ml-ai-ops/platform/internal/integrations"
+	"github.com/ml-ai-ops/platform/internal/store"
 )
 
 //go:embed web/*
