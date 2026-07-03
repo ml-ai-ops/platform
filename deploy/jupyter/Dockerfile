@@ -9,7 +9,8 @@
 FROM python:3.11-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl \
+ && apt-get install -y --no-install-recommends git curl fuse3 s3fs \
+ && printf 'user_allow_other\n' >> /etc/fuse.conf \
  && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
@@ -36,12 +37,12 @@ COPY deploy/jupyter/quickstart.ipynb /opt/seed/quickstart.ipynb
 COPY deploy/jupyter/entrypoint.sh /usr/local/bin/workbench
 RUN chmod +x /usr/local/bin/workbench \
  && useradd --create-home --uid 1000 dev \
- && mkdir -p /workspace && chown dev:dev /workspace
+ && mkdir -p /workspace /workspace/object-store \
+ && chown -R dev:dev /workspace
 
 ENV PYTHONPATH=/opt/platform/python \
     SHELL=/bin/bash
 
-USER dev
 WORKDIR /workspace
 EXPOSE 8888
 ENTRYPOINT ["workbench"]

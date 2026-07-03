@@ -54,9 +54,9 @@
         </div>
 
         <div class="stat-grid">
-          <article><span>Projects</span><strong id="stat-projects">—</strong><small>in this workspace</small></article>
-          <article><span>Active runs</span><strong id="stat-runs">—</strong><small>queued or running</small></article>
-          <article><span>Platform health</span><strong id="stat-health">—</strong><small>components connected</small></article>
+          <article class="summary-link" role="button" tabindex="0" data-view-target="projects"><span>Projects</span><strong id="stat-projects">—</strong><small>in this workspace</small></article>
+          <article class="summary-link" role="button" tabindex="0" data-view-target="pipelines"><span>Active runs</span><strong id="stat-runs">—</strong><small>queued or running</small></article>
+          <article class="summary-link" role="button" tabindex="0" data-view-target="platform"><span>Platform health</span><strong id="stat-health">—</strong><small>components connected</small></article>
         </div>
 
         <div class="split">
@@ -106,11 +106,11 @@
 
       <section id="storage" class="view">
         <div class="section-heading"><div><p class="eyebrow">ARTIFACTS &amp; ENDPOINTS</p><h2>Storage and endpoint explorer</h2><p>Browse the object store, live inference endpoints, and serverless functions.</p></div></div>
-        <div class="split">
+        <div class="split storage-layout">
           <article class="panel"><div class="panel-heading"><div><p class="eyebrow">OBJECT STORE</p><h3 id="storage-title">Buckets</h3></div><button class="link" id="storage-up" hidden>← Back</button></div><div id="storage-browser" class="storage-browser"></div></article>
-          <div>
-            <article class="panel table-wrap"><div class="panel-heading"><div><p class="eyebrow">LIVE ENDPOINTS</p><h3>Model endpoints</h3></div></div><table><thead><tr><th>Model</th><th>Endpoint</th><th>Status</th><th></th></tr></thead><tbody id="endpoint-table"></tbody></table></article>
-            <article class="panel table-wrap"><div class="panel-heading"><div><p class="eyebrow">SERVERLESS</p><h3>Functions</h3></div></div><table><thead><tr><th>Function</th><th>Image</th><th>Replicas</th><th></th></tr></thead><tbody id="function-table"></tbody></table></article>
+          <div class="endpoint-stack">
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">LIVE ENDPOINTS</p><h3>Model endpoints</h3></div></div><div id="endpoint-list" class="endpoint-list"></div></article>
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">SERVERLESS</p><h3>Functions</h3></div></div><div id="function-list" class="endpoint-list"></div></article>
           </div>
         </div>
       </section>
@@ -198,6 +198,7 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
   <dialog id="about-dialog"><div class="detail-sheet"><p class="eyebrow">ABOUT</p><h2>Nexus</h2><div id="about-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <dialog id="preview-dialog"><div class="detail-sheet"><div id="preview-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <dialog id="run-dialog"><div class="detail-sheet"><div id="run-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <dialog id="metadata-dialog"><div class="detail-sheet"><div id="metadata-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
 </body>

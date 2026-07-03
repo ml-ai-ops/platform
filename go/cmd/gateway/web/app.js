@@ -11,6 +11,19 @@ const when = value => new Intl.RelativeTimeFormat("en", {numeric: "auto"}).forma
 const status = value => `<span class="status ${escapeHTML(value)}">${escapeHTML(String(value).replace("_", " "))}</span>`;
 const toast = message => { const node = document.querySelector("#toast"); node.textContent = message; node.classList.add("show"); setTimeout(() => node.classList.remove("show"), 2400); };
 const bytes = size => size > 1048576 ? `${(size/1048576).toFixed(1)} MB` : size > 1024 ? `${(size/1024).toFixed(1)} KB` : `${size} B`;
+const dateTime = value => value ? new Date(value).toLocaleString() : "—";
+const metadataValue = value => {
+  if (value === undefined || value === null || value === "") return "—";
+  if (typeof value === "object") return `<pre class="hint metadata-json">${escapeHTML(JSON.stringify(value, null, 2))}</pre>`;
+  return escapeHTML(value);
+};
+function showMetadata(kind, title, item, actions = "") {
+  const rows = Object.entries(item).map(([key, value]) =>
+    `<tr><th>${escapeHTML(key.replaceAll("_", " "))}</th><td>${metadataValue(value)}</td></tr>`
+  ).join("");
+  document.querySelector("#metadata-detail").innerHTML = `<p class="eyebrow">${escapeHTML(kind.toUpperCase())}</p><h2>${escapeHTML(title)}</h2><table class="metadata-table"><tbody>${rows}</tbody></table>${actions}`;
+  document.querySelector("#metadata-dialog").showModal();
+}
 
 // ---- identity & permissions -------------------------------------------------
 // The gateway's /api/v1/me is the single source of truth: buttons the caller's
@@ -58,9 +71,11 @@ async function loadDashboard() {
   document.querySelector("#recent-runs").innerHTML = data.recent_runs.length ? data.recent_runs.map(run => `<div class="run-row"><span class="run-icon">↯</span><div><b>${escapeHTML(run.name)}</b><small>${when(run.created_at)}</small></div>${status(run.status)}</div>`).join("") : `<p class="empty">No runs yet.</p>`;
 }
 
+let projectCache = [];
 async function loadProjects() {
   const projects = await api("/api/v1/projects");
-  document.querySelector("#project-grid").innerHTML = projects.length ? projects.map(project => `<article class="card"><span class="kind">${escapeHTML(project.template)}</span><h3>${escapeHTML(project.name)}</h3><p>${escapeHTML(project.description || "No description yet.")}</p><footer><span class="tag">${escapeHTML(project.namespace)}</span>${status(project.status)}</footer></article>`).join("") : `<p class="empty">No projects yet — create one to begin.</p>`;
+  projectCache = projects;
+  document.querySelector("#project-grid").innerHTML = projects.length ? projects.map(project => `<article class="card interactive-card" role="button" tabindex="0" data-project-detail="${escapeHTML(project.id)}"><span class="kind">${escapeHTML(project.template)}</span><h3>${escapeHTML(project.name)}</h3><p>${escapeHTML(project.description || "No description yet.")}</p><footer><span class="tag">${escapeHTML(project.namespace)}</span>${status(project.status)}</footer></article>`).join("") : `<p class="empty">No projects yet — create one to begin.</p>`;
   const select = document.querySelector("#submit-project");
   select.innerHTML = projects.map(project => `<option value="${escapeHTML(project.id)}">${escapeHTML(project.name)}</option>`).join("");
   return projects;
@@ -151,12 +166,14 @@ async function loadModels() {
     const actions = can("models_write")
       ? `<button data-model-action="promote" data-model-id="${escapeHTML(model.id)}">Promote</button><button data-model-action="deploy" data-model-id="${escapeHTML(model.id)}">Deploy</button><button data-model-action="rollback" data-model-id="${escapeHTML(model.id)}">Rollback</button>${live ? `<button class="primary" data-model-test="${escapeHTML(model.id)}">Test</button>` : ""}`
       : `<span class="tag">read-only</span>`;
-    return `<article class="card model-card"><span class="kind">${escapeHTML(model.stage)} · v${escapeHTML(model.version)}</span><h3>${escapeHTML(model.name)}</h3><p>${escapeHTML(model.artifact_uri)}</p><div class="metric-row"><span>Quality gate <b class="${model.gate_status === "passed" ? "good" : "bad"}">${escapeHTML(model.gate_status || "pending")}</b></span><span>Deployment <b>${escapeHTML(model.deployment_status || "not deployed")}</b></span></div><div class="tags">${Object.entries(model.metrics || {}).map(([key,value]) => `<span class="tag">${escapeHTML(key)} ${Number(value).toFixed(3)}</span>`).join("")}${live ? `<span class="tag live">● live</span>` : ""}</div><footer>${actions}</footer></article>`;
+    return `<article class="card model-card interactive-card" role="button" tabindex="0" data-model-detail="${escapeHTML(model.id)}"><span class="kind">${escapeHTML(model.stage)} · v${escapeHTML(model.version)}</span><h3>${escapeHTML(model.name)}</h3><p>${escapeHTML(model.artifact_uri)}</p><div class="metric-row"><span>Quality gate <b class="${model.gate_status === "passed" ? "good" : "bad"}">${escapeHTML(model.gate_status || "pending")}</b></span><span>Deployment <b>${escapeHTML(model.deployment_status || "not deployed")}</b></span></div><div class="tags">${Object.entries(model.metrics || {}).map(([key,value]) => `<span class="tag">${escapeHTML(key)} ${Number(value).toFixed(3)}</span>`).join("")}${live ? `<span class="tag live">● live</span>` : ""}</div><footer>${actions}</footer></article>`;
   }).join("") : `<p class="empty">No models registered yet — run the training pipeline.</p>`;
 }
 
+let agentCache = [];
 async function loadAgents() {
   const [data, prompts] = await Promise.all([api("/api/v1/agents"), api("/api/v1/prompts")]);
+  agentCache = data.items || [];
   const sessionGroups = await Promise.all(data.items.map(agent => api(`/api/v1/agents/${encodeURIComponent(agent.id)}/sessions`)));
   const sessions = sessionGroups.flatMap(group => group.items);
   const tokens = sessions.reduce((sum, item) => sum + item.input_tokens + item.output_tokens, 0);
@@ -164,7 +181,7 @@ async function loadAgents() {
   document.querySelector("#agent-summary").innerHTML = `<article><span>Deployed agents</span><strong>${data.total}</strong><small>registered versions</small></article><article><span>Active sessions</span><strong>${sessions.filter(item => item.status === "running").length}</strong><small>${sessions.length} total sessions</small></article><article><span>LLM cost</span><strong>$${cost.toFixed(4)}</strong><small>${tokens.toLocaleString()} tokens</small></article>`;
   document.querySelector("#agent-grid").innerHTML = data.items.length ? data.items.map(agent => {
     const actions = can("agents_write") ? `<button data-agent-traffic="${escapeHTML(agent.id)}">Traffic</button><button class="primary" data-agent-chat="${escapeHTML(agent.id)}" data-agent-name="${escapeHTML(agent.name)}">Chat</button>` : `<span class="tag">read-only</span>`;
-    return `<article class="card"><span class="kind">${escapeHTML(agent.llm_backend)} · v${escapeHTML(agent.version)}</span><h3>${escapeHTML(agent.name)}</h3><p>${escapeHTML(agent.graph_module)}</p><div class="tags">${(agent.tools || []).map(tool => `<span class="tag">${escapeHTML(tool)}</span>`).join("")}</div><footer>${status(agent.status)}<span class="tag">${agent.canary_weight}% canary</span>${actions}</footer></article>`;
+    return `<article class="card interactive-card" role="button" tabindex="0" data-agent-detail="${escapeHTML(agent.id)}"><span class="kind">${escapeHTML(agent.llm_backend)} · v${escapeHTML(agent.version)}</span><h3>${escapeHTML(agent.name)}</h3><p>${escapeHTML(agent.graph_module)}</p><div class="tags">${(agent.tools || []).map(tool => `<span class="tag">${escapeHTML(tool)}</span>`).join("")}</div><footer>${status(agent.status)}<span class="tag">${agent.canary_weight}% canary</span>${actions}</footer></article>`;
   }).join("") : `<p class="empty">No agents deployed yet.</p>`;
   document.querySelector("#session-table").innerHTML = sessions.length ? sessions.map(session => `<tr><td>${escapeHTML(session.id)}</td><td>${escapeHTML(session.agent_id)}</td><td>${escapeHTML(session.current_node)}</td><td>${status(session.status)}</td><td>${session.turns}</td><td>${(session.input_tokens + session.output_tokens).toLocaleString()}</td><td>$${session.cost_usd.toFixed(4)}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No sessions yet — chat with an agent.</td></tr>`;
   document.querySelector("#prompt-list").innerHTML = prompts.configured
@@ -176,7 +193,7 @@ let featureCache = [];
 function renderFeatures(query = "") {
   const lowered = query.toLowerCase();
   const filtered = featureCache.filter(view => !lowered || view.name.toLowerCase().includes(lowered) || (view.tags || []).some(tag => tag.toLowerCase().includes(lowered)));
-  document.querySelector("#feature-grid").innerHTML = filtered.length ? filtered.map(view => `<article class="card feature-card"><span class="kind">entity: ${escapeHTML(view.entity)}</span><h3>${escapeHTML(view.name)}</h3><table class="schema"><thead><tr><th>Field</th><th>Type</th></tr></thead><tbody>${(view.fields || []).map(field => `<tr><td>${escapeHTML(field.name)}</td><td>${escapeHTML(field.type)}</td></tr>`).join("")}</tbody></table><div class="tags">${(view.tags || []).map(tag => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}${view.ttl_seconds ? `<span class="tag">TTL ${view.ttl_seconds}s</span>` : ""}</div><footer>${status(view.status)}<span class="tag">${view.online_entity_count || 0} entities online</span>${view.materialized_at ? `<small>${when(view.materialized_at)}</small>` : ""}</footer></article>`).join("") : `<p class="empty">No feature views${query ? " match your search" : " applied yet — run the materializer"}.</p>`;
+  document.querySelector("#feature-grid").innerHTML = filtered.length ? filtered.map(view => `<article class="card feature-card interactive-card" role="button" tabindex="0" data-feature-detail="${escapeHTML(view.id)}"><span class="kind">entity: ${escapeHTML(view.entity)}</span><h3>${escapeHTML(view.name)}</h3><table class="schema"><thead><tr><th>Field</th><th>Type</th></tr></thead><tbody>${(view.fields || []).map(field => `<tr><td>${escapeHTML(field.name)}</td><td>${escapeHTML(field.type)}</td></tr>`).join("")}</tbody></table><div class="tags">${(view.tags || []).map(tag => `<span class="tag">${escapeHTML(tag)}</span>`).join("")}${view.ttl_seconds ? `<span class="tag">TTL ${view.ttl_seconds}s</span>` : ""}</div><footer>${status(view.status)}<span class="tag">${view.online_entity_count || 0} entities online</span>${view.materialized_at ? `<small>${when(view.materialized_at)}</small>` : ""}</footer></article>`).join("") : `<p class="empty">No feature views${query ? " match your search" : " applied yet — run the materializer"}.</p>`;
 }
 async function loadFeatures() {
   const data = await api("/api/v1/features");
@@ -208,12 +225,13 @@ async function loadStorage() {
   }
   const [models, functions] = await Promise.all([api("/api/v1/models"), api("/api/v1/functions")]);
   const live = models.items.filter(model => model.endpoint_url && model.endpoint_url.startsWith("http"));
-  document.querySelector("#endpoint-table").innerHTML = live.length ? live.map(model => `<tr><td><b>${escapeHTML(model.name)}</b> v${escapeHTML(model.version)}</td><td><code>${escapeHTML(model.endpoint_url)}</code></td><td>${status(model.deployment_status)}</td><td>${can("models_write") ? `<button data-model-test="${escapeHTML(model.id)}">Test</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">No live endpoints — deploy a gated model.</td></tr>`;
-  document.querySelector("#function-table").innerHTML = functions.configured
-    ? ((functions.items || []).length ? functions.items.map(fn => `<tr><td><b>${escapeHTML(fn.name)}</b></td><td><code>${escapeHTML(fn.image)}</code></td><td>${fn.replicas}</td><td>${can("functions_write") ? `<button data-function-invoke="${escapeHTML(fn.name)}">Invoke</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">OpenFaaS connected — no functions yet.</td></tr>`)
-    : `<tr><td colspan="4" class="empty">Serverless not configured (set OPENFAAS_URL).</td></tr>`;
+  document.querySelector("#endpoint-list").innerHTML = live.length ? live.map(model => `<article class="endpoint-item"><div><h4>${escapeHTML(model.name)} v${escapeHTML(model.version)}</h4><div class="endpoint-meta">${status(model.deployment_status)}<span class="tag">${escapeHTML(model.stage)}</span></div></div>${can("models_write") ? `<button data-model-test="${escapeHTML(model.id)}">Test</button>` : ""}<code>${escapeHTML(model.endpoint_url)}</code></article>`).join("") : `<p class="empty">No live endpoints — deploy a gated model.</p>`;
+  document.querySelector("#function-list").innerHTML = functions.configured
+    ? ((functions.items || []).length ? functions.items.map(fn => `<article class="endpoint-item"><div><h4>${escapeHTML(fn.name)}</h4><div class="endpoint-meta"><span class="tag">${fn.replicas} replicas</span></div></div>${can("functions_write") ? `<button data-function-invoke="${escapeHTML(fn.name)}">Invoke</button>` : ""}<code>${escapeHTML(fn.image)}</code></article>`).join("") : `<p class="empty">OpenFaaS connected — no functions yet.</p>`)
+    : `<p class="empty">Serverless not configured. Set <code>OPENFAAS_URL</code> to connect it.</p>`;
 }
 
+let realtimeCache = [];
 async function loadRealtime() {
   const data = await api("/api/v1/realtime");
   const demos = [
@@ -221,23 +239,28 @@ async function loadRealtime() {
     {key: "callcenter", title: "Call-center analysis", detail: "transcript → support agent → sentiment + intent"},
     {key: "recommendations", title: "Recommendations", detail: "activity → profile features → ranked items"},
   ];
+  realtimeCache = demos.map(demo => ({...demo, stats: (data.demos || {})[demo.key] || null}));
   document.querySelector("#realtime-grid").innerHTML = demos.map(demo => {
     const stats = (data.demos || {})[demo.key];
     const body = stats
       ? `<div class="metric-row"><span>Events <b>${stats.events ?? 0}</b></span><span>Avg latency <b>${stats.avg_latency_ms ?? 0} ms</b></span>${demo.key === "fraud" ? `<span>Flagged <b class="bad">${stats.flagged ?? 0}</b></span>` : ""}</div><small>updated ${when(stats.updated_at)}</small>`
       : `<p class="empty">No events processed yet.</p>`;
-    return `<article class="card"><span class="kind">stream</span><h3>${demo.title}</h3><p>${demo.detail}</p>${body}</article>`;
+    return `<article class="card interactive-card" role="button" tabindex="0" data-stream-detail="${demo.key}"><span class="kind">stream</span><h3>${demo.title}</h3><p>${demo.detail}</p>${body}</article>`;
   }).join("");
 }
 
+let catalogCache = [];
 async function loadCatalog(kind = "") {
   const items = await api(`/api/v1/catalog${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`);
-  document.querySelector("#catalog-grid").innerHTML = items.length ? items.map(item => `<article class="card"><span class="kind">${escapeHTML(item.kind)} · ${escapeHTML(item.version)}</span><h3>${escapeHTML(item.name)}</h3><div class="tags">${item.metadata.map(meta => `<span class="tag">${escapeHTML(meta)}</span>`).join("")}</div><footer><span></span>${status(item.status)}</footer></article>`).join("") : `<p class="empty">The catalog fills up as you register models, features, agents and tools.</p>`;
+  catalogCache = items;
+  document.querySelector("#catalog-grid").innerHTML = items.length ? items.map((item, index) => `<article class="card interactive-card" role="button" tabindex="0" data-catalog-detail="${index}"><span class="kind">${escapeHTML(item.kind)} · ${escapeHTML(item.version)}</span><h3>${escapeHTML(item.name)}</h3><div class="tags">${item.metadata.map(meta => `<span class="tag">${escapeHTML(meta)}</span>`).join("")}</div><footer><span></span>${status(item.status)}</footer></article>`).join("") : `<p class="empty">The catalog fills up as you register models, features, agents and tools.</p>`;
 }
 
+let componentCache = [];
 async function loadComponents() {
   const [items, readiness, connections] = await Promise.all([api("/api/v1/components"), api("/api/v1/onboarding/readiness"), api("/api/v1/connections")]);
-  document.querySelector("#component-grid").innerHTML = items.map(item => `<article class="component"><div><span class="category">${escapeHTML(item.category)}</span><h3>${escapeHTML(item.name)}</h3></div>${status(item.status)}<p>${escapeHTML(item.description)}</p></article>`).join("");
+  componentCache = items;
+  document.querySelector("#component-grid").innerHTML = items.map((item, index) => `<article class="component interactive-card" role="button" tabindex="0" data-component-detail="${index}"><div><span class="category">${escapeHTML(item.category)}</span><h3>${escapeHTML(item.name)}</h3></div>${status(item.status)}<p>${escapeHTML(item.description)}</p></article>`).join("");
   document.querySelector("#readiness-percent").textContent = `${readiness.percent}%`;
   document.querySelector("#readiness-list").innerHTML = readiness.items.map(item => `<li class="${item.status === "ready" ? "done" : ""}"><span>${item.status === "ready" ? "✓" : "○"}</span><div><b>${escapeHTML(item.label)}</b><small>${escapeHTML(item.description)}</small></div></li>`).join("");
   document.querySelector("#connection-grid").innerHTML = connections.items.length ? connections.items.map(item => `<article class="card connection-card"><span class="kind">${escapeHTML(item.type)}</span><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(item.endpoint)}</p><footer>${status(item.status)}${can("connections_write") ? `<button data-connection-test="${escapeHTML(item.id)}">Test</button>` : ""}</footer>${item.message ? `<small>${escapeHTML(item.message)}</small>` : ""}</article>`).join("") : `<div class="empty-state"><b>No services connected</b><span>Add Kubernetes, MLflow, storage and Kafka to complete onboarding.</span></div>`;
@@ -322,6 +345,12 @@ document.querySelectorAll(".nav-item").forEach(button => button.addEventListener
   }
 }));
 document.querySelectorAll("[data-view-target]").forEach(button => button.addEventListener("click", () => showView(button.dataset.viewTarget)));
+document.addEventListener("keydown", event => {
+  if ((event.key === "Enter" || event.key === " ") && event.target.matches("[role='button']")) {
+    event.preventDefault();
+    event.target.click();
+  }
+});
 document.querySelectorAll("[data-kind]").forEach(button => button.addEventListener("click", () => { document.querySelectorAll("[data-kind]").forEach(n => n.classList.remove("active")); button.classList.add("active"); loadCatalog(button.dataset.kind); }));
 document.querySelector("#feature-search").addEventListener("input", event => renderFeatures(event.target.value));
 document.querySelector("#storage-up").addEventListener("click", () => {
@@ -498,7 +527,77 @@ async function handleDynamicClick(event) {
     await loadModels(); return;
   }
   const connectionTest = event.target.closest("[data-connection-test]");
-  if (connectionTest) { await api(`/api/v1/connections/${encodeURIComponent(connectionTest.dataset.connectionTest)}/test`, {method:"POST", body:"{}"}); toast("Connection check completed."); await loadComponents(); }
+  if (connectionTest) { await api(`/api/v1/connections/${encodeURIComponent(connectionTest.dataset.connectionTest)}/test`, {method:"POST", body:"{}"}); toast("Connection check completed."); await loadComponents(); return; }
+
+  const configure = event.target.closest("[data-configure-component]");
+  if (configure) {
+    const presets = {
+      "API Gateway": {type:"kubernetes", endpoint:`${location.origin}/api/v1/health`},
+      "Pipeline Engine": {type:"prefect", endpoint:"http://prefect-server:4200/api/health"},
+      "Experiment Tracker": {type:"mlflow", endpoint:"http://mlflow:5000/health"},
+      "Feature Store": {type:"redis", endpoint:"http://feature-gateway:8083/healthz"},
+      "Object Store": {type:"s3", endpoint:"http://minio:9000/minio/health/live"},
+      "Inference Engine": {type:"kubernetes", endpoint:"http://serving-manager:8085/healthz"},
+      "Agent Observability": {type:"langfuse", endpoint:"http://langfuse:3000/api/public/health"},
+      "Streaming Broker": {type:"kafka", endpoint:"http://kafka-rest:8082"},
+      Kubernetes: {type:"kubernetes", endpoint:"https://kubernetes.default.svc/version"},
+    };
+    const name = configure.dataset.configureComponent;
+    const preset = presets[name] || {type:"kubernetes", endpoint:""};
+    const form = document.querySelector("#connection-form");
+    form.elements.type.value = preset.type;
+    form.elements.name.value = name.toLowerCase().replaceAll(" ", "-");
+    form.elements.endpoint.value = preset.endpoint;
+    form.elements.secret_ref.value = `${form.elements.name.value}-credentials`;
+    document.querySelector("#metadata-dialog").close();
+    document.querySelector("#connection-dialog").showModal();
+    return;
+  }
+
+  const projectDetail = event.target.closest("[data-project-detail]");
+  if (projectDetail) {
+    const item = projectCache.find(project => project.id === projectDetail.dataset.projectDetail);
+    if (item) showMetadata("Project", item.name, {...item, created_at:dateTime(item.created_at)});
+    return;
+  }
+  const modelDetail = event.target.closest("[data-model-detail]");
+  if (modelDetail) {
+    const item = cachedModels.find(model => model.id === modelDetail.dataset.modelDetail);
+    if (item) showMetadata("Model", `${item.name} v${item.version}`, {...item, created_at:dateTime(item.created_at)});
+    return;
+  }
+  const agentDetail = event.target.closest("[data-agent-detail]");
+  if (agentDetail) {
+    const item = agentCache.find(agent => agent.id === agentDetail.dataset.agentDetail);
+    if (item) showMetadata("Agent", `${item.name} v${item.version}`, {...item, created_at:dateTime(item.created_at)});
+    return;
+  }
+  const featureDetail = event.target.closest("[data-feature-detail]");
+  if (featureDetail) {
+    const item = featureCache.find(feature => feature.id === featureDetail.dataset.featureDetail);
+    if (item) showMetadata("Feature view", item.name, {...item, created_at:dateTime(item.created_at), materialized_at:dateTime(item.materialized_at)});
+    return;
+  }
+  const streamDetail = event.target.closest("[data-stream-detail]");
+  if (streamDetail) {
+    const item = realtimeCache.find(stream => stream.key === streamDetail.dataset.streamDetail);
+    if (item) showMetadata("Real-time stream", item.title, {key:item.key, flow:item.detail, statistics:item.stats || "No events processed yet"});
+    return;
+  }
+  const catalogDetail = event.target.closest("[data-catalog-detail]");
+  if (catalogDetail) {
+    const item = catalogCache[Number(catalogDetail.dataset.catalogDetail)];
+    if (item) showMetadata("Catalog entry", item.name, item);
+    return;
+  }
+  const componentDetail = event.target.closest("[data-component-detail]");
+  if (componentDetail) {
+    const item = componentCache[Number(componentDetail.dataset.componentDetail)];
+    if (item) {
+      const actions = can("connections_write") ? `<div class="form-actions"><button class="primary" data-configure-component="${escapeHTML(item.name)}">Configure connection</button></div>` : "";
+      showMetadata("Platform component", item.name, item, actions);
+    }
+  }
 }
 document.addEventListener("click", event => {
   handleDynamicClick(event).catch(failure => toast(failure.message));

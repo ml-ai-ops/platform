@@ -8,6 +8,21 @@ environment. It also provides the **terminal** for shell-based dev work.
 - **Token:** `mlaiops-local` (override with `JUPYTER_TOKEN`)
 - **Build:** `deploy/jupyter/Dockerfile` (Python 3.11)
 - **Persistence:** your work lives in the `jupyter-data` volume across restarts
+- **Object store mount:** `/workspace/object-store/<bucket>`
+
+Each MinIO/S3 bucket is mounted as a directory, so notebook code can use normal
+filesystem APIs:
+
+```python
+from pathlib import Path
+
+features = Path("/workspace/object-store/mlaiops-features")
+print(list(features.iterdir()))
+```
+
+Writes through these paths persist directly to object storage. Only the
+workbench receives the FUSE device and `SYS_ADMIN` capability required by
+S3FS; these permissions must not be copied to other platform services.
 
 ## What's preloaded
 
