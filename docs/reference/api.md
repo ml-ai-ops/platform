@@ -1,7 +1,8 @@
 # REST API reference
 
-The gateway exposes a JSON REST API under `/api/v1`. A machine-readable OpenAPI
-document is served at `GET /api/openapi.json`. Every request is authorized by
+The gateway exposes a JSON REST API under `/api/v1`. A searchable human-facing
+reference is served at `GET /api-docs.html`; the machine-readable OpenAPI
+document remains available at `GET /api/openapi.json`. Every request is authorized by
 [RBAC](rbac.md).
 
 - **Base URL (local):** `http://localhost:8080`
