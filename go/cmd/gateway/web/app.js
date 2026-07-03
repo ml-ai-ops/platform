@@ -11,6 +11,30 @@ const status = value => `<span class="status ${escapeHTML(value)}">${escapeHTML(
 const toast = message => { const node = document.querySelector("#toast"); node.textContent = message; node.classList.add("show"); setTimeout(() => node.classList.remove("show"), 2400); };
 const bytes = size => size > 1048576 ? `${(size/1048576).toFixed(1)} MB` : size > 1024 ? `${(size/1024).toFixed(1)} KB` : `${size} B`;
 
+// ---- identity & permissions -------------------------------------------------
+// The gateway's /api/v1/me is the single source of truth: buttons the caller's
+// role cannot use are disabled here, and the API enforces the same table.
+let me = {subject: "", email: "", roles: [], mode: "local", permissions: {}};
+const can = key => me.permissions[key] !== false;
+
+function applyPermissions() {
+  document.querySelectorAll("[data-perm]").forEach(button => {
+    const allowed = can(button.dataset.perm);
+    button.disabled = !allowed;
+    button.title = allowed ? "" : `Not available to role: ${me.roles.join(", ") || "unknown"}`;
+  });
+  const name = me.email || me.subject || "anonymous";
+  document.querySelector("#user-name").textContent = name;
+  document.querySelector("#user-role").textContent = `${me.roles.join(", ") || "no role"} · ${me.mode} mode`;
+  document.querySelector("#menu-user").textContent = `${name} · ${me.roles.join(", ")}`;
+}
+
+async function loadMe() {
+  try { me = {...me, ...await api("/api/v1/me")}; }
+  catch { me.permissions = {}; } // gateway still enforces; keep controls visible
+  applyPermissions();
+}
+
 let activeView = "overview";
 const viewLoaders = {};
 
@@ -81,7 +105,8 @@ async function showRun(runId) {
   const run = await api(`/api/v1/pipelines/runs/${encodeURIComponent(runId)}`);
   const logs = (run.logs || []).map(log => `<div class="log-line"><time>${new Date(log.timestamp).toLocaleTimeString()}</time><b>${escapeHTML(log.step || "system")}</b><span>${escapeHTML(log.message)}</span></div>`).join("") || `<p class="empty">No logs have arrived yet.</p>`;
   const engine = run.engine_run_id ? `<span class="tag">engine ${escapeHTML(run.engine_run_id)}</span>` : "";
-  document.querySelector("#run-detail").innerHTML = `<p class="eyebrow">PIPELINE RUN</p><h2>${escapeHTML(run.name)}</h2><div class="detail-meta">${status(run.status)}<span>${escapeHTML(run.id)}</span><span>${when(run.created_at)}</span>${engine}</div><h3>Execution graph</h3>${dagSVG(run.steps)}<h3>Logs</h3><div class="logs">${logs}</div><div class="sheet-actions"><button data-run-action="cancel" data-run-id="${escapeHTML(run.id)}">Cancel</button><button class="primary" data-run-action="retry" data-run-id="${escapeHTML(run.id)}">Retry run</button></div>`;
+  const runActions = can("pipelines_write") ? `<div class="sheet-actions"><button data-run-action="cancel" data-run-id="${escapeHTML(run.id)}">Cancel</button><button class="primary" data-run-action="retry" data-run-id="${escapeHTML(run.id)}">Retry run</button></div>` : "";
+  document.querySelector("#run-detail").innerHTML = `<p class="eyebrow">PIPELINE RUN</p><h2>${escapeHTML(run.name)}</h2><div class="detail-meta">${status(run.status)}<span>${escapeHTML(run.id)}</span><span>${when(run.created_at)}</span>${engine}</div><h3>Execution graph</h3>${dagSVG(run.steps)}<h3>Logs</h3><div class="logs">${logs}</div>${runActions}`;
   document.querySelector("#run-dialog").showModal();
 }
 
@@ -122,7 +147,10 @@ async function loadModels() {
   metricChart(data.items, chosen);
   document.querySelector("#model-grid").innerHTML = data.items.length ? data.items.map(model => {
     const live = model.endpoint_url && model.endpoint_url.startsWith("http");
-    return `<article class="card model-card"><span class="kind">${escapeHTML(model.stage)} · v${escapeHTML(model.version)}</span><h3>${escapeHTML(model.name)}</h3><p>${escapeHTML(model.artifact_uri)}</p><div class="metric-row"><span>Quality gate <b class="${model.gate_status === "passed" ? "good" : "bad"}">${escapeHTML(model.gate_status || "pending")}</b></span><span>Deployment <b>${escapeHTML(model.deployment_status || "not deployed")}</b></span></div><div class="tags">${Object.entries(model.metrics || {}).map(([key,value]) => `<span class="tag">${escapeHTML(key)} ${Number(value).toFixed(3)}</span>`).join("")}${live ? `<span class="tag live">● live</span>` : ""}</div><footer><button data-model-action="promote" data-model-id="${escapeHTML(model.id)}">Promote</button><button data-model-action="deploy" data-model-id="${escapeHTML(model.id)}">Deploy</button><button data-model-action="rollback" data-model-id="${escapeHTML(model.id)}">Rollback</button>${live ? `<button class="primary" data-model-test="${escapeHTML(model.id)}">Test</button>` : ""}</footer></article>`;
+    const actions = can("models_write")
+      ? `<button data-model-action="promote" data-model-id="${escapeHTML(model.id)}">Promote</button><button data-model-action="deploy" data-model-id="${escapeHTML(model.id)}">Deploy</button><button data-model-action="rollback" data-model-id="${escapeHTML(model.id)}">Rollback</button>${live ? `<button class="primary" data-model-test="${escapeHTML(model.id)}">Test</button>` : ""}`
+      : `<span class="tag">read-only</span>`;
+    return `<article class="card model-card"><span class="kind">${escapeHTML(model.stage)} · v${escapeHTML(model.version)}</span><h3>${escapeHTML(model.name)}</h3><p>${escapeHTML(model.artifact_uri)}</p><div class="metric-row"><span>Quality gate <b class="${model.gate_status === "passed" ? "good" : "bad"}">${escapeHTML(model.gate_status || "pending")}</b></span><span>Deployment <b>${escapeHTML(model.deployment_status || "not deployed")}</b></span></div><div class="tags">${Object.entries(model.metrics || {}).map(([key,value]) => `<span class="tag">${escapeHTML(key)} ${Number(value).toFixed(3)}</span>`).join("")}${live ? `<span class="tag live">● live</span>` : ""}</div><footer>${actions}</footer></article>`;
   }).join("") : `<p class="empty">No models registered yet — run the training pipeline.</p>`;
 }
 
@@ -133,7 +161,10 @@ async function loadAgents() {
   const tokens = sessions.reduce((sum, item) => sum + item.input_tokens + item.output_tokens, 0);
   const cost = sessions.reduce((sum, item) => sum + item.cost_usd, 0);
   document.querySelector("#agent-summary").innerHTML = `<article><span>Deployed agents</span><strong>${data.total}</strong><small>registered versions</small></article><article><span>Active sessions</span><strong>${sessions.filter(item => item.status === "running").length}</strong><small>${sessions.length} total sessions</small></article><article><span>LLM cost</span><strong>$${cost.toFixed(4)}</strong><small>${tokens.toLocaleString()} tokens</small></article>`;
-  document.querySelector("#agent-grid").innerHTML = data.items.length ? data.items.map(agent => `<article class="card"><span class="kind">${escapeHTML(agent.llm_backend)} · v${escapeHTML(agent.version)}</span><h3>${escapeHTML(agent.name)}</h3><p>${escapeHTML(agent.graph_module)}</p><div class="tags">${(agent.tools || []).map(tool => `<span class="tag">${escapeHTML(tool)}</span>`).join("")}</div><footer>${status(agent.status)}<span class="tag">${agent.canary_weight}% canary</span><button data-agent-traffic="${escapeHTML(agent.id)}">Traffic</button><button class="primary" data-agent-chat="${escapeHTML(agent.id)}" data-agent-name="${escapeHTML(agent.name)}">Chat</button></footer></article>`).join("") : `<p class="empty">No agents deployed yet.</p>`;
+  document.querySelector("#agent-grid").innerHTML = data.items.length ? data.items.map(agent => {
+    const actions = can("agents_write") ? `<button data-agent-traffic="${escapeHTML(agent.id)}">Traffic</button><button class="primary" data-agent-chat="${escapeHTML(agent.id)}" data-agent-name="${escapeHTML(agent.name)}">Chat</button>` : `<span class="tag">read-only</span>`;
+    return `<article class="card"><span class="kind">${escapeHTML(agent.llm_backend)} · v${escapeHTML(agent.version)}</span><h3>${escapeHTML(agent.name)}</h3><p>${escapeHTML(agent.graph_module)}</p><div class="tags">${(agent.tools || []).map(tool => `<span class="tag">${escapeHTML(tool)}</span>`).join("")}</div><footer>${status(agent.status)}<span class="tag">${agent.canary_weight}% canary</span>${actions}</footer></article>`;
+  }).join("") : `<p class="empty">No agents deployed yet.</p>`;
   document.querySelector("#session-table").innerHTML = sessions.length ? sessions.map(session => `<tr><td>${escapeHTML(session.id)}</td><td>${escapeHTML(session.agent_id)}</td><td>${escapeHTML(session.current_node)}</td><td>${status(session.status)}</td><td>${session.turns}</td><td>${(session.input_tokens + session.output_tokens).toLocaleString()}</td><td>$${session.cost_usd.toFixed(4)}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No sessions yet — chat with an agent.</td></tr>`;
   document.querySelector("#prompt-list").innerHTML = prompts.configured
     ? (prompts.items.length ? prompts.items.map(prompt => `<div class="prompt-row"><b>${escapeHTML(prompt.name)}</b><span class="tag">v${escapeHTML(prompt.version ?? "?")}</span>${(prompt.labels || []).map(label => `<span class="tag">${escapeHTML(label)}</span>`).join("")}</div>`).join("") : `<p class="empty">Langfuse is connected — no prompts stored yet.</p>`)
@@ -176,9 +207,9 @@ async function loadStorage() {
   }
   const [models, functions] = await Promise.all([api("/api/v1/models"), api("/api/v1/functions")]);
   const live = models.items.filter(model => model.endpoint_url && model.endpoint_url.startsWith("http"));
-  document.querySelector("#endpoint-table").innerHTML = live.length ? live.map(model => `<tr><td><b>${escapeHTML(model.name)}</b> v${escapeHTML(model.version)}</td><td><code>${escapeHTML(model.endpoint_url)}</code></td><td>${status(model.deployment_status)}</td><td><button data-model-test="${escapeHTML(model.id)}">Test</button></td></tr>`).join("") : `<tr><td colspan="4" class="empty">No live endpoints — deploy a gated model.</td></tr>`;
+  document.querySelector("#endpoint-table").innerHTML = live.length ? live.map(model => `<tr><td><b>${escapeHTML(model.name)}</b> v${escapeHTML(model.version)}</td><td><code>${escapeHTML(model.endpoint_url)}</code></td><td>${status(model.deployment_status)}</td><td>${can("models_write") ? `<button data-model-test="${escapeHTML(model.id)}">Test</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">No live endpoints — deploy a gated model.</td></tr>`;
   document.querySelector("#function-table").innerHTML = functions.configured
-    ? ((functions.items || []).length ? functions.items.map(fn => `<tr><td><b>${escapeHTML(fn.name)}</b></td><td><code>${escapeHTML(fn.image)}</code></td><td>${fn.replicas}</td><td><button data-function-invoke="${escapeHTML(fn.name)}">Invoke</button></td></tr>`).join("") : `<tr><td colspan="4" class="empty">OpenFaaS connected — no functions yet.</td></tr>`)
+    ? ((functions.items || []).length ? functions.items.map(fn => `<tr><td><b>${escapeHTML(fn.name)}</b></td><td><code>${escapeHTML(fn.image)}</code></td><td>${fn.replicas}</td><td>${can("functions_write") ? `<button data-function-invoke="${escapeHTML(fn.name)}">Invoke</button>` : ""}</td></tr>`).join("") : `<tr><td colspan="4" class="empty">OpenFaaS connected — no functions yet.</td></tr>`)
     : `<tr><td colspan="4" class="empty">Serverless not configured (set OPENFAAS_URL).</td></tr>`;
 }
 
@@ -208,7 +239,7 @@ async function loadComponents() {
   document.querySelector("#component-grid").innerHTML = items.map(item => `<article class="component"><div><span class="category">${escapeHTML(item.category)}</span><h3>${escapeHTML(item.name)}</h3></div>${status(item.status)}<p>${escapeHTML(item.description)}</p></article>`).join("");
   document.querySelector("#readiness-percent").textContent = `${readiness.percent}%`;
   document.querySelector("#readiness-list").innerHTML = readiness.items.map(item => `<li class="${item.status === "ready" ? "done" : ""}"><span>${item.status === "ready" ? "✓" : "○"}</span><div><b>${escapeHTML(item.label)}</b><small>${escapeHTML(item.description)}</small></div></li>`).join("");
-  document.querySelector("#connection-grid").innerHTML = connections.items.length ? connections.items.map(item => `<article class="card connection-card"><span class="kind">${escapeHTML(item.type)}</span><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(item.endpoint)}</p><footer>${status(item.status)}<button data-connection-test="${escapeHTML(item.id)}">Test</button></footer>${item.message ? `<small>${escapeHTML(item.message)}</small>` : ""}</article>`).join("") : `<div class="empty-state"><b>No services connected</b><span>Add Kubernetes, MLflow, storage and Kafka to complete onboarding.</span></div>`;
+  document.querySelector("#connection-grid").innerHTML = connections.items.length ? connections.items.map(item => `<article class="card connection-card"><span class="kind">${escapeHTML(item.type)}</span><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(item.endpoint)}</p><footer>${status(item.status)}${can("connections_write") ? `<button data-connection-test="${escapeHTML(item.id)}">Test</button>` : ""}</footer>${item.message ? `<small>${escapeHTML(item.message)}</small>` : ""}</article>`).join("") : `<div class="empty-state"><b>No services connected</b><span>Add Kubernetes, MLflow, storage and Kafka to complete onboarding.</span></div>`;
 }
 
 Object.assign(viewLoaders, {
@@ -232,6 +263,86 @@ function connectEvents() {
   };
   source.onerror = () => { indicator.textContent = "○  Local Cluster  reconnecting"; };
 }
+
+// ---- menu bar ---------------------------------------------------------------
+const openSubmitDialog = async () => { await loadProjects(); document.querySelector("#submit-dialog").showModal(); };
+const toggleSidebar = () => document.querySelector(".shell").classList.toggle("sidebar-hidden");
+
+async function showAbout() {
+  let health = {status: "unreachable", version: "?"};
+  try { health = await api("/api/v1/health"); } catch { /* shown as unreachable */ }
+  document.querySelector("#about-detail").innerHTML = `
+    <div class="detail-meta">${status(health.status === "ok" ? "healthy" : "failed")}<span class="tag">${escapeHTML(health.service || "gateway")}</span><span class="tag">v${escapeHTML(health.version)}</span></div>
+    <p>Self-hosted MLOps, data-centric and agentic AI platform — pipelines, model serving, feature store, agents and real-time streams behind one control plane.</p>
+    <table class="schema"><tbody>
+      <tr><td>Signed in as</td><td>${escapeHTML(me.email || me.subject || "anonymous")}</td></tr>
+      <tr><td>Roles</td><td>${escapeHTML(me.roles.join(", ") || "none")}</td></tr>
+      <tr><td>Auth mode</td><td>${escapeHTML(me.mode)}</td></tr>
+      <tr><td>API</td><td><code>${escapeHTML(location.origin)}/api/v1</code></td></tr>
+    </tbody></table>`;
+  document.querySelector("#about-dialog").showModal();
+}
+
+const menuDefs = {
+  nexus: () => [{label: "About Nexus", run: showAbout}],
+  file: () => [
+    {label: "New Project…", perm: "projects_write", run: () => document.querySelector("#project-dialog").showModal()},
+    {label: "Run Pipeline…", perm: "pipelines_write", run: openSubmitDialog},
+    {label: "Add Connection…", perm: "connections_write", run: () => document.querySelector("#connection-dialog").showModal()},
+  ],
+  edit: () => [
+    {label: "Refresh Current View", run: () => (viewLoaders[activeView] || loadDashboard)().catch(error => toast(error.message))},
+    {label: "Copy API Base URL", run: async () => { await navigator.clipboard.writeText(`${location.origin}/api/v1`); toast("API base URL copied."); }},
+  ],
+  view: () => [...document.querySelectorAll(".nav-item")].map(item => ({
+    label: item.textContent.trim(), checked: item.dataset.view === activeView, run: () => showView(item.dataset.view),
+  })),
+  run: () => [
+    {label: "Run Pipeline…", perm: "pipelines_write", run: openSubmitDialog},
+    {label: "Open Pipeline Runs", run: () => showView("pipelines")},
+    {label: "Open Real-Time Streams", run: () => showView("realtime")},
+  ],
+  window: () => [
+    {label: "Toggle Sidebar", run: toggleSidebar},
+    {label: "Back to Overview", run: () => showView("overview")},
+    {label: "Reload Window", run: () => location.reload()},
+  ],
+  help: () => [
+    {label: "API Reference ↗", run: () => window.open("/api/openapi.json", "_blank")},
+    {label: "Hosting & Docs ↗", run: () => window.open("https://github.com/Markkimotho/mlops#readme", "_blank")},
+    {label: "About Nexus", run: showAbout},
+  ],
+};
+
+const menuDropdown = document.querySelector("#menu-dropdown");
+let openMenu = "";
+function closeMenu() { openMenu = ""; menuDropdown.hidden = true; menuDropdown.innerHTML = ""; }
+function openMenuFor(button) {
+  const name = button.dataset.menu;
+  if (openMenu === name) { closeMenu(); return; }
+  openMenu = name;
+  const items = menuDefs[name]();
+  menuDropdown.innerHTML = items.map((item, index) => {
+    const allowed = !item.perm || can(item.perm);
+    return `<button role="menuitem" data-menu-item="${index}" ${allowed ? "" : "disabled"} title="${allowed ? "" : `Not available to role: ${escapeHTML(me.roles.join(", "))}`}">${item.checked ? "✓ " : ""}${escapeHTML(item.label)}</button>`;
+  }).join("");
+  const at = button.getBoundingClientRect();
+  menuDropdown.style.left = `${Math.round(at.left)}px`;
+  menuDropdown.style.top = `${Math.round(at.bottom + 2)}px`;
+  menuDropdown.hidden = false;
+  menuDropdown.querySelectorAll("[data-menu-item]").forEach(node => node.addEventListener("click", event => {
+    event.stopPropagation();
+    const item = items[Number(node.dataset.menuItem)];
+    closeMenu();
+    Promise.resolve(item.run()).catch(error => toast(error.message));
+  }));
+}
+document.querySelectorAll("[data-menu]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); openMenuFor(button); }));
+document.addEventListener("click", () => { if (openMenu) closeMenu(); });
+document.addEventListener("keydown", event => { if (event.key === "Escape" && openMenu) closeMenu(); });
+
+document.querySelector("#sidebar-collapse").addEventListener("click", toggleSidebar);
+document.querySelector("#go-overview").addEventListener("click", () => showView("overview"));
 
 // ---- interactions -----------------------------------------------------------
 document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
@@ -262,7 +373,7 @@ document.querySelector("#project-form").addEventListener("submit", async event =
   } catch (failure) { error.textContent = failure.message; }
 });
 
-document.querySelector("#run-pipeline").addEventListener("click", async () => { await loadProjects(); document.querySelector("#submit-dialog").showModal(); });
+document.querySelector("#run-pipeline").addEventListener("click", openSubmitDialog);
 document.querySelector("#submit-form").addEventListener("submit", async event => {
   event.preventDefault(); const error = document.querySelector("#submit-error"); error.textContent = "";
   try {
@@ -370,5 +481,5 @@ document.addEventListener("click", async event => {
   if (connectionTest) { await api(`/api/v1/connections/${encodeURIComponent(connectionTest.dataset.connectionTest)}/test`, {method:"POST", body:"{}"}); toast("Connection check completed."); await loadComponents(); }
 });
 
-Promise.all([loadDashboard(), loadProjects(), loadRuns()]).catch(error => toast(error.message));
+Promise.all([loadMe(), loadDashboard(), loadProjects(), loadRuns()]).catch(error => toast(error.message));
 connectEvents();

@@ -34,6 +34,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	server := &Server{store: data, static: static, realtime: map[string]map[string]any{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", server.health)
+	mux.HandleFunc("GET /api/v1/me", server.me)
 	mux.HandleFunc("GET /api/v1/dashboard", server.dashboard)
 	mux.HandleFunc("GET /api/v1/onboarding/readiness", server.readiness)
 	mux.HandleFunc("GET /api/v1/projects", server.projects)
@@ -81,7 +82,28 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/audit", server.audit)
 	mux.HandleFunc("GET /api/openapi.json", server.openapi)
 	mux.Handle("/", http.FileServer(http.FS(static)))
-	return logging(cors(mux))
+	return logging(cors(auth.RBAC(mux)))
+}
+
+// me reports the caller's identity and effective permissions so the console
+// renders exactly what the API will allow.
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	principal, ok := auth.PrincipalFrom(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthenticated", "no principal resolved")
+		return
+	}
+	mode := "local"
+	if os.Getenv("OIDC_ISSUER") != "" {
+		mode = "oidc"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"subject":     principal.Subject,
+		"email":       principal.Email,
+		"roles":       principal.Roles,
+		"mode":        mode,
+		"permissions": auth.Permissions(principal),
+	})
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

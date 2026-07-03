@@ -8,15 +8,17 @@
 </head>
 <body>
   <div class="menu-bar">
-    <button class="apple-menu" aria-label="Nexus menu">◆</button>
+    <button class="apple-menu" data-menu="nexus" aria-label="Nexus menu" aria-haspopup="menu">◆</button>
     <b>Nexus</b>
-    <button>File</button><button>Edit</button><button>View</button><button>Run</button><button>Window</button><button>Help</button>
+    <button data-menu="file" aria-haspopup="menu">File</button><button data-menu="edit" aria-haspopup="menu">Edit</button><button data-menu="view" aria-haspopup="menu">View</button><button data-menu="run" aria-haspopup="menu">Run</button><button data-menu="window" aria-haspopup="menu">Window</button><button data-menu="help" aria-haspopup="menu">Help</button>
     <span class="menu-spacer"></span>
+    <span class="menu-user" id="menu-user"></span>
     <span class="menu-status" id="live-indicator">●&nbsp; Local Cluster&nbsp;&nbsp; live</span>
   </div>
+  <div class="menu-dropdown" id="menu-dropdown" role="menu" hidden></div>
   <div class="shell">
     <aside>
-      <div class="window-title"><button aria-label="Close navigation"></button><span>ML Operations</span><i></i></div>
+      <div class="window-title"><button id="sidebar-collapse" aria-label="Collapse navigation" title="Collapse sidebar"></button><span>ML Operations</span><i></i></div>
       <a class="brand" href="#"><span class="brand-mark">N</span><span>Nexus</span></a>
       <nav aria-label="Main navigation">
         <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
@@ -31,6 +33,7 @@
         <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
       </nav>
       <div class="sidebar-footer">
+        <div class="cluster user-chip"><i id="user-dot"></i><span><b id="user-name">…</b><small id="user-role">resolving identity</small></span></div>
         <div class="cluster"><i></i><span><b>Local workspace</b><small>Gateway connected</small></span></div>
         <a href="/api/openapi.json" target="_blank">API reference ↗</a>
       </div>
@@ -38,9 +41,9 @@
 
     <main>
       <header>
-        <div class="window-title"><button aria-label="Close window"></button><span>Workspace</span><i></i></div>
+        <div class="window-title"><button id="go-overview" aria-label="Back to overview" title="Back to overview"></button><span>Workspace</span><i></i></div>
         <div><p class="eyebrow">ML WORKSPACE</p><h1 id="page-title">Good morning, builder.</h1></div>
-        <button class="primary" id="new-project">＋ New project</button>
+        <button class="primary" id="new-project" data-perm="projects_write">＋ New project</button>
       </header>
 
       <section id="overview" class="view active">
@@ -76,7 +79,7 @@
       <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Your projects</h2><p>Each project gets a clear path from exploration to production.</p></div></div><div id="project-grid" class="card-grid"></div></section>
 
       <section id="pipelines" class="view">
-        <div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>Real execution through the pipeline engine — every step reported live.</p></div><button class="primary" id="run-pipeline">▶ Run pipeline</button></div>
+        <div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>Real execution through the pipeline engine — every step reported live.</p></div><button class="primary" id="run-pipeline" data-perm="pipelines_write">▶ Run pipeline</button></div>
         <div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div>
       </section>
 
@@ -122,7 +125,7 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
 
       <section id="catalog" class="view"><div class="section-heading"><div><p class="eyebrow">DISCOVERABILITY</p><h2>Shared catalog</h2><p>Models, features, agents, and tools—searchable and understandable.</p></div><div class="filters"><button class="active" data-kind="">All</button><button data-kind="model">Models</button><button data-kind="feature">Features</button><button data-kind="agent">Agents</button><button data-kind="tool">Tools</button></div></div><div id="catalog-grid" class="card-grid"></div></section>
 
-      <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
+      <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection" data-perm="connections_write">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
     </main>
   </div>
 
@@ -180,6 +183,7 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
     </div>
   </dialog>
 
+  <dialog id="about-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><p class="eyebrow">ABOUT</p><h2>Nexus</h2><div id="about-detail"></div></div></dialog>
   <dialog id="preview-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="preview-detail"></div></div></dialog>
   <dialog id="run-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="run-detail"></div></div></dialog>
   <div id="toast" role="status"></div>

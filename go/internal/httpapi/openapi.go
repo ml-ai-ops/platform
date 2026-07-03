@@ -8,6 +8,7 @@ func (s *Server) openapi(w http.ResponseWriter, _ *http.Request) {
 		"info":    map[string]any{"title": "ml-ai-ops-platform API", "version": "0.1.0"},
 		"paths": map[string]any{
 			"/api/v1/health":               map[string]any{"get": map[string]any{"summary": "Gateway health"}},
+			"/api/v1/me":                   map[string]any{"get": map[string]any{"summary": "Caller identity, roles and effective permissions"}},
 			"/api/v1/dashboard":            map[string]any{"get": map[string]any{"summary": "Workspace summary"}},
 			"/api/v1/onboarding/readiness": map[string]any{"get": map[string]any{"summary": "Onboarding readiness"}},
 			"/api/v1/projects":             map[string]any{"get": map[string]any{"summary": "List projects"}, "post": map[string]any{"summary": "Create project"}},

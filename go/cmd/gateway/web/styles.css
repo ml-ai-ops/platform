@@ -451,3 +451,40 @@ code { font-family: ui-monospace, monospace; font-size: 11.5px; background: rgba
 .tag.live { color: #1d7d3f; background: rgba(48,209,88,.15); }
 #predict-input { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
 #predict-output:empty { display: none; }
+
+/* Menus (menu-bar dropdowns) */
+.menu-dropdown {
+  position: fixed;
+  z-index: 40;
+  min-width: 210px;
+  padding: 5px;
+  border: 1px solid rgba(0,0,0,.12);
+  border-radius: 9px;
+  background: rgba(247,247,247,.92);
+  box-shadow: var(--shadow);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  display: flex;
+  flex-direction: column;
+}
+.menu-dropdown button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 5px 10px;
+  text-align: left;
+  font-size: 12px;
+  cursor: default;
+}
+.menu-dropdown button:hover:not([disabled]) { color: #fff; background: var(--blue); }
+.menu-dropdown button[disabled] { color: var(--tertiary); }
+.menu-user { margin-right: 12px; color: #555; font-size: 11px; }
+
+/* Identity & permissions */
+.user-chip { margin-bottom: 9px; }
+.user-chip i { background: var(--blue); }
+button[data-perm][disabled] { opacity: .45; cursor: not-allowed; }
+
+/* Collapsible sidebar */
+.shell.sidebar-hidden { grid-template-columns: minmax(0,1fr); }
+.shell.sidebar-hidden aside { display: none; }

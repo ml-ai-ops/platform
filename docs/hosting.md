@@ -99,6 +99,25 @@ Every image is environment-agnostic; targets are configuration:
 - Backups: Postgres (control plane, MLflow, Langfuse, checkpoints) and MinIO
   volumes hold all durable state — snapshot `postgres-data` and `minio-data`.
 
+## Roles (RBAC)
+
+Every API request is authorized against a role, in every mode:
+
+| Role | May do |
+| --- | --- |
+| `admin`, `operator` | Everything, including platform connections |
+| `engineer` | Full ML lifecycle (projects, pipelines, models, agents, tools, features, functions) — not connections |
+| `viewer` | Read-only |
+| `service` | Internal reporting only (traces, run steps, materializations, realtime stats); granted by presenting `MLAIOPS_INTERNAL_TOKEN` |
+
+- **Public (OIDC) mode:** roles come from the ID token's `roles` claim, or the
+  `groups` claim when no `roles` claim exists. In Dex, put users in groups
+  named after the roles (e.g. a `viewer` group for read-only stakeholders).
+- **Local mode:** every request acts as `MLAIOPS_LOCAL_ROLE` (default `admin`).
+  Set it to `viewer` to preview the read-only console.
+- `GET /api/v1/me` returns the caller's identity, roles, and effective
+  permissions; the console uses it to disable controls the API would deny.
+
 ## Security notes
 
 - The gateway enforces OIDC on every `/api/*` route in public mode

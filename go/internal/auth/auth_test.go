@@ -53,3 +53,104 @@ func TestTenantMismatchFails(t *testing.T) {
 		t.Fatal("viewer must be read-only")
 	}
 }
+
+func TestAllowedMatrix(t *testing.T) {
+	cases := []struct {
+		role, method, path string
+		want               bool
+	}{
+		{RoleAdmin, http.MethodPost, "/api/v1/connections", true},
+		{RoleOperator, http.MethodPost, "/api/v1/connections", true},
+		{RoleViewer, http.MethodGet, "/api/v1/models", true},
+		{RoleViewer, http.MethodPost, "/api/v1/models", false},
+		{RoleViewer, http.MethodPost, "/api/v1/agents/agt-1/invoke", false},
+		{RoleEngineer, http.MethodPost, "/api/v1/models/mdl-1/deploy", true},
+		{RoleEngineer, http.MethodPost, "/api/v1/functions", true},
+		{RoleEngineer, http.MethodPost, "/api/v1/connections", false},
+		{RoleService, http.MethodPost, "/api/v1/traces", true},
+		{RoleService, http.MethodPost, "/api/v1/pipelines/runs/run-1/steps", true},
+		{RoleService, http.MethodPost, "/api/v1/features/customer_profile/materialized", true},
+		{RoleService, http.MethodPost, "/api/v1/realtime/fraud", true},
+		{RoleService, http.MethodPost, "/api/v1/models", false},
+		{RoleService, http.MethodPost, "/api/v1/connections", false},
+		{RoleService, http.MethodGet, "/api/v1/agents", true},
+	}
+	for _, test := range cases {
+		principal := Principal{Roles: []string{test.role}}
+		if got := Allowed(principal, test.method, test.path); got != test.want {
+			t.Errorf("Allowed(%s, %s %s) = %v, want %v", test.role, test.method, test.path, got, test.want)
+		}
+	}
+}
+
+func TestPermissionsMatchAllowed(t *testing.T) {
+	engineer := Permissions(Principal{Roles: []string{RoleEngineer}})
+	if !engineer["models_write"] || engineer["connections_write"] {
+		t.Fatalf("engineer permissions wrong: %#v", engineer)
+	}
+	viewer := Permissions(Principal{Roles: []string{RoleViewer}})
+	for key, allowed := range viewer {
+		if allowed {
+			t.Fatalf("viewer must not hold %s", key)
+		}
+	}
+}
+
+func TestRBACLocalRole(t *testing.T) {
+	handler := RBAC(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := PrincipalFrom(r.Context())
+		if !ok {
+			t.Fatal("principal missing from context")
+		}
+		_ = json.NewEncoder(w).Encode(principal.Subject)
+	}))
+
+	t.Setenv("MLAIOPS_LOCAL_ROLE", "viewer")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/projects", nil))
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("viewer POST should be 403, got %d", recorder.Code)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/projects", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("viewer GET should be 200, got %d", recorder.Code)
+	}
+
+	t.Setenv("MLAIOPS_LOCAL_ROLE", "")
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/projects", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("default local role must be admin, got %d", recorder.Code)
+	}
+}
+
+func TestRBACInternalToken(t *testing.T) {
+	t.Setenv("MLAIOPS_INTERNAL_TOKEN", "platform-secret")
+	t.Setenv("MLAIOPS_LOCAL_ROLE", "viewer")
+	handler := RBAC(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/traces", nil)
+	request.Header.Set("Authorization", "Bearer platform-secret")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("service token must report traces, got %d", recorder.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/connections", nil)
+	request.Header.Set("Authorization", "Bearer platform-secret")
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("service token must not manage connections, got %d", recorder.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/traces", nil)
+	request.Header.Set("Authorization", "Bearer wrong-secret")
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("wrong token must fall back to local viewer and be denied, got %d", recorder.Code)
+	}
+}
