@@ -7,18 +7,18 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="menu-bar">
-    <button class="apple-menu" data-menu="nexus" aria-label="Nexus menu" aria-haspopup="menu">◆</button>
-    <b>Nexus</b>
-    <button data-menu="file" aria-haspopup="menu">File</button><button data-menu="edit" aria-haspopup="menu">Edit</button><button data-menu="view" aria-haspopup="menu">View</button><button data-menu="run" aria-haspopup="menu">Run</button><button data-menu="window" aria-haspopup="menu">Window</button><button data-menu="help" aria-haspopup="menu">Help</button>
-    <span class="menu-spacer"></span>
+  <div class="app-bar">
+    <button class="icon-button" id="sidebar-toggle" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">☰</button>
+    <a class="app-brand" href="#" data-view-target="overview"><span class="brand-mark">N</span><b>Nexus</b></a>
+    <span class="workspace-label">ML Operations</span>
+    <span class="app-spacer"></span>
+    <button class="app-action" id="refresh-view">Refresh</button>
+    <button class="app-action" id="open-help">Help</button>
     <span class="menu-user" id="menu-user"></span>
     <span class="menu-status" id="live-indicator">●&nbsp; Local Cluster&nbsp;&nbsp; live</span>
   </div>
-  <div class="menu-dropdown" id="menu-dropdown" role="menu" hidden></div>
   <div class="shell">
     <aside>
-      <div class="window-title"><button id="sidebar-collapse" aria-label="Collapse navigation" title="Collapse sidebar"></button><span>ML Operations</span><i></i></div>
       <a class="brand" href="#"><span class="brand-mark">N</span><span>Nexus</span></a>
       <nav aria-label="Main navigation">
         <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
@@ -42,7 +42,6 @@
 
     <main>
       <header>
-        <div class="window-title"><button id="go-overview" aria-label="Back to overview" title="Back to overview"></button><span>Workspace</span><i></i></div>
         <div><p class="eyebrow">ML WORKSPACE</p><h1 id="page-title">Good morning, builder.</h1></div>
         <button class="primary" id="new-project" data-perm="projects_write">＋ New project</button>
       </header>
@@ -132,61 +131,73 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
 
   <dialog id="project-dialog">
     <form id="project-form">
-      <button type="button" class="close" aria-label="Close">×</button>
       <p class="eyebrow">NEW PROJECT</p><h2>What are you building?</h2><p>Pick the closest starting point. You can change every part later.</p>
       <label>Project name<input name="name" required minlength="3" placeholder="e.g. churn-prediction"></label>
       <label>What is it for?<textarea name="description" placeholder="A short, useful description"></textarea></label>
       <label>Starting template<select name="template"><option value="tabular-classification">Tabular classification</option><option value="forecasting">Time-series forecasting</option><option value="rag-agent">RAG / AI agent</option><option value="blank">Blank expert workspace</option></select></label>
-      <p class="form-error" id="form-error"></p><button class="primary submit" type="submit">Create project →</button>
+      <p class="form-error" id="form-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Create project</button></div>
     </form>
   </dialog>
 
   <dialog id="submit-dialog">
     <form id="submit-form">
-      <button type="button" class="close" aria-label="Close">×</button>
       <p class="eyebrow">RUN PIPELINE</p><h2>Submit a real run</h2><p>The engine executes each step in a container and reports back live.</p>
       <label>Project<select name="project_id" id="submit-project"></select></label>
       <label>Pipeline<select name="name"><option value="training-pipeline">training-pipeline</option></select></label>
-      <p class="form-error" id="submit-error"></p><button class="primary submit" type="submit">Submit run →</button>
+      <p class="form-error" id="submit-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Submit run</button></div>
     </form>
   </dialog>
 
   <dialog id="connection-dialog">
     <form id="connection-form">
-      <button type="button" class="close" aria-label="Close">×</button>
       <p class="eyebrow">CONNECT SERVICE</p><h2>Add infrastructure</h2><p>Nexus stores only a Kubernetes Secret reference, never raw credentials.</p>
       <label>Service<select name="type"><option value="kubernetes">Kubernetes</option><option value="mlflow">MLflow</option><option value="s3">S3 / MinIO</option><option value="kafka">Kafka REST</option><option value="langfuse">Langfuse</option><option value="prefect">Prefect</option><option value="redis">Redis / Feast</option></select></label>
       <label>Connection name<input name="name" required placeholder="e.g. production-mlflow"></label>
       <label>Health endpoint<input name="endpoint" required type="url" placeholder="https://mlflow.example.com/health"></label>
       <label>Kubernetes Secret<input name="secret_ref" required placeholder="mlflow-credentials"></label>
-      <p class="form-error" id="connection-error"></p><button class="primary submit" type="submit">Save and test</button>
+      <p class="form-error" id="connection-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save and test</button></div>
     </form>
   </dialog>
 
   <dialog id="chat-dialog">
     <div class="detail-sheet chat-sheet">
-      <button type="button" class="close" aria-label="Close">×</button>
       <p class="eyebrow">AGENT TEST CONSOLE</p><h2 id="chat-agent-name">Agent</h2>
       <div id="chat-log" class="chat-log"><p class="empty">Ask something — the turn runs through the real agent runtime.</p></div>
-      <form id="chat-form"><input id="chat-input" placeholder="e.g. When are invoices issued?" autocomplete="off" required><button class="primary" type="submit">Send</button></form>
+      <form id="chat-form"><input id="chat-input" placeholder="e.g. When are invoices issued?" autocomplete="off" required><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Send</button></form>
     </div>
   </dialog>
 
   <dialog id="predict-dialog">
     <div class="detail-sheet">
-      <button type="button" class="close" aria-label="Close">×</button>
       <p class="eyebrow">INFERENCE TEST CONSOLE</p><h2 id="predict-model-name">Model</h2>
       <form id="predict-form">
         <label>Request payload (mlflow /invocations)<textarea id="predict-input" rows="5">{"inputs": [[0.1, -1.2, 0.5, 2.0, 0.3, -0.7, 1.1, 0.0, -0.4, 0.9, -1.5, 0.2]]}</textarea></label>
-        <button class="primary" type="submit">Send prediction request</button>
+        <div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Send prediction request</button></div>
       </form>
       <pre id="predict-output" class="hint"></pre>
     </div>
   </dialog>
 
-  <dialog id="about-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><p class="eyebrow">ABOUT</p><h2>Nexus</h2><div id="about-detail"></div></div></dialog>
-  <dialog id="preview-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="preview-detail"></div></div></dialog>
-  <dialog id="run-dialog"><div class="detail-sheet"><button type="button" class="close" aria-label="Close">×</button><div id="run-detail"></div></div></dialog>
+  <dialog id="traffic-dialog">
+    <form id="traffic-form">
+      <p class="eyebrow">AGENT TRAFFIC</p><h2>Set canary traffic</h2><p>Choose the percentage of requests routed to the canary version.</p>
+      <label>Canary weight <span id="traffic-value">10%</span><input id="traffic-weight" name="canary_weight" type="range" min="0" max="100" value="10"></label>
+      <p class="form-error" id="traffic-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Update traffic</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="function-dialog">
+    <form id="function-form">
+      <p class="eyebrow">SERVERLESS FUNCTION</p><h2 id="function-name">Invoke function</h2>
+      <label>JSON payload<textarea id="function-payload" rows="6">{}</textarea></label>
+      <p class="form-error" id="function-error"></p><pre id="function-output" class="hint"></pre>
+      <div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Invoke function</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="about-dialog"><div class="detail-sheet"><p class="eyebrow">ABOUT</p><h2>Nexus</h2><div id="about-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <dialog id="preview-dialog"><div class="detail-sheet"><div id="preview-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <dialog id="run-dialog"><div class="detail-sheet"><div id="run-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <div id="toast" role="status"></div>
   <script src="/app.js"></script>
 </body>

@@ -1,6 +1,7 @@
 const api = async (path, options = {}) => {
-  const response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...options});
-  const body = await response.json();
+  const response = await fetch(path, {headers: {"Accept": "application/json", "Content-Type": "application/json"}, ...options});
+  const contentType = response.headers.get("content-type") || "";
+  const body = contentType.includes("application/json") ? await response.json() : {message: await response.text()};
   if (!response.ok) throw new Error(body.message || body.error || "Something went wrong");
   return body;
 };
@@ -264,9 +265,29 @@ function connectEvents() {
   source.onerror = () => { indicator.textContent = "○  Local Cluster  reconnecting"; };
 }
 
-// ---- menu bar ---------------------------------------------------------------
+// ---- application navigation ------------------------------------------------
 const openSubmitDialog = async () => { await loadProjects(); document.querySelector("#submit-dialog").showModal(); };
-const toggleSidebar = () => document.querySelector(".shell").classList.toggle("sidebar-hidden");
+const shell = document.querySelector(".shell");
+const sidebarToggle = document.querySelector("#sidebar-toggle");
+const isMobile = () => window.matchMedia("(max-width: 650px)").matches;
+function toggleSidebar() {
+  if (isMobile()) {
+    const open = shell.classList.toggle("mobile-nav-open");
+    sidebarToggle.setAttribute("aria-expanded", String(open));
+    sidebarToggle.title = open ? "Close navigation" : "Open navigation";
+    return;
+  }
+  const collapsed = shell.classList.toggle("sidebar-collapsed");
+  localStorage.setItem("nexus.sidebar.collapsed", String(collapsed));
+  sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  sidebarToggle.title = collapsed ? "Expand navigation" : "Collapse navigation";
+}
+
+if (!isMobile() && localStorage.getItem("nexus.sidebar.collapsed") === "true") {
+  shell.classList.add("sidebar-collapsed");
+  sidebarToggle.setAttribute("aria-expanded", "false");
+  sidebarToggle.title = "Expand navigation";
+}
 
 async function showAbout() {
   let health = {status: "unreachable", version: "?"};
@@ -283,71 +304,23 @@ async function showAbout() {
   document.querySelector("#about-dialog").showModal();
 }
 
-const menuDefs = {
-  nexus: () => [{label: "About Nexus", run: showAbout}],
-  file: () => [
-    {label: "New Project…", perm: "projects_write", run: () => document.querySelector("#project-dialog").showModal()},
-    {label: "Run Pipeline…", perm: "pipelines_write", run: openSubmitDialog},
-    {label: "Add Connection…", perm: "connections_write", run: () => document.querySelector("#connection-dialog").showModal()},
-  ],
-  edit: () => [
-    {label: "Refresh Current View", run: () => (viewLoaders[activeView] || loadDashboard)().catch(error => toast(error.message))},
-    {label: "Copy API Base URL", run: async () => { await navigator.clipboard.writeText(`${location.origin}/api/v1`); toast("API base URL copied."); }},
-  ],
-  view: () => [...document.querySelectorAll(".nav-item")].map(item => ({
-    label: item.textContent.trim(), checked: item.dataset.view === activeView, run: () => showView(item.dataset.view),
-  })),
-  run: () => [
-    {label: "Run Pipeline…", perm: "pipelines_write", run: openSubmitDialog},
-    {label: "Open Pipeline Runs", run: () => showView("pipelines")},
-    {label: "Open Real-Time Streams", run: () => showView("realtime")},
-  ],
-  window: () => [
-    {label: "Toggle Sidebar", run: toggleSidebar},
-    {label: "Back to Overview", run: () => showView("overview")},
-    {label: "Reload Window", run: () => location.reload()},
-  ],
-  help: () => [
-    {label: "API Reference ↗", run: () => window.open("/api/openapi.json", "_blank")},
-    {label: "Jupyter Workbench ↗", run: () => window.open(`http://${location.hostname}:8888`, "_blank")},
-    {label: "Hosting & Docs ↗", run: () => window.open("https://github.com/ml-ai-ops/platform#readme", "_blank")},
-    {label: "About Nexus", run: showAbout},
-  ],
-};
-
-const menuDropdown = document.querySelector("#menu-dropdown");
-let openMenu = "";
-function closeMenu() { openMenu = ""; menuDropdown.hidden = true; menuDropdown.innerHTML = ""; }
-function openMenuFor(button) {
-  const name = button.dataset.menu;
-  if (openMenu === name) { closeMenu(); return; }
-  openMenu = name;
-  const items = menuDefs[name]();
-  menuDropdown.innerHTML = items.map((item, index) => {
-    const allowed = !item.perm || can(item.perm);
-    return `<button role="menuitem" data-menu-item="${index}" ${allowed ? "" : "disabled"} title="${allowed ? "" : `Not available to role: ${escapeHTML(me.roles.join(", "))}`}">${item.checked ? "✓ " : ""}${escapeHTML(item.label)}</button>`;
-  }).join("");
-  const at = button.getBoundingClientRect();
-  menuDropdown.style.left = `${Math.round(at.left)}px`;
-  menuDropdown.style.top = `${Math.round(at.bottom + 2)}px`;
-  menuDropdown.hidden = false;
-  menuDropdown.querySelectorAll("[data-menu-item]").forEach(node => node.addEventListener("click", event => {
-    event.stopPropagation();
-    const item = items[Number(node.dataset.menuItem)];
-    closeMenu();
-    Promise.resolve(item.run()).catch(error => toast(error.message));
-  }));
-}
-document.querySelectorAll("[data-menu]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); openMenuFor(button); }));
-document.addEventListener("click", () => { if (openMenu) closeMenu(); });
-document.addEventListener("keydown", event => { if (event.key === "Escape" && openMenu) closeMenu(); });
-
 document.querySelector("#workbench-link").href = `http://${location.hostname}:8888`;
-document.querySelector("#sidebar-collapse").addEventListener("click", toggleSidebar);
-document.querySelector("#go-overview").addEventListener("click", () => showView("overview"));
+sidebarToggle.addEventListener("click", toggleSidebar);
+document.querySelector("#refresh-view").addEventListener("click", () => (viewLoaders[activeView] || loadDashboard)().then(() => toast("View refreshed.")).catch(error => toast(error.message)));
+document.querySelector("#open-help").addEventListener("click", () => showAbout().catch(error => toast(error.message)));
+document.querySelectorAll(".brand, .app-brand").forEach(link => link.addEventListener("click", event => {
+  event.preventDefault();
+  showView("overview");
+}));
 
 // ---- interactions -----------------------------------------------------------
-document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
+document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => {
+  showView(button.dataset.view);
+  if (isMobile()) {
+    shell.classList.remove("mobile-nav-open");
+    sidebarToggle.setAttribute("aria-expanded", "false");
+  }
+}));
 document.querySelectorAll("[data-view-target]").forEach(button => button.addEventListener("click", () => showView(button.dataset.viewTarget)));
 document.querySelectorAll("[data-kind]").forEach(button => button.addEventListener("click", () => { document.querySelectorAll("[data-kind]").forEach(n => n.classList.remove("active")); button.classList.add("active"); loadCatalog(button.dataset.kind); }));
 document.querySelector("#feature-search").addEventListener("input", event => renderFeatures(event.target.value));
@@ -362,7 +335,15 @@ document.querySelector("#storage-up").addEventListener("click", () => {
 
 const dialog = document.querySelector("#project-dialog");
 document.querySelector("#new-project").addEventListener("click", () => dialog.showModal());
-document.querySelectorAll("dialog .close").forEach(button => button.addEventListener("click", () => button.closest("dialog").close()));
+function closeDialog(node) {
+  const modal = node.closest("dialog");
+  modal.querySelectorAll(".form-error").forEach(error => { error.textContent = ""; });
+  modal.close();
+}
+document.querySelectorAll("dialog .close, dialog [data-dialog-close]").forEach(button => button.addEventListener("click", () => closeDialog(button)));
+document.querySelectorAll("dialog").forEach(modal => modal.addEventListener("click", event => {
+  if (event.target === modal) closeDialog(modal);
+}));
 document.querySelector("#project-form").addEventListener("submit", async event => {
   event.preventDefault();
   const form = new FormData(event.target);
@@ -433,7 +414,40 @@ document.querySelector("#predict-form").addEventListener("submit", async event =
   } catch (failure) { output.textContent = `Error: ${failure.message}`; }
 });
 
-document.addEventListener("click", async event => {
+const trafficState = {agentId: ""};
+document.querySelector("#traffic-weight").addEventListener("input", event => {
+  document.querySelector("#traffic-value").textContent = `${event.target.value}%`;
+});
+document.querySelector("#traffic-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const error = document.querySelector("#traffic-error");
+  const weight = Number(document.querySelector("#traffic-weight").value);
+  error.textContent = "";
+  try {
+    await api(`/api/v1/agents/${encodeURIComponent(trafficState.agentId)}/traffic`, {method:"PUT", body:JSON.stringify({canary_weight: weight})});
+    document.querySelector("#traffic-dialog").close();
+    toast(`Canary weight set to ${weight}%.`);
+    await loadAgents();
+  } catch (failure) { error.textContent = failure.message; }
+});
+
+const functionState = {name: ""};
+document.querySelector("#function-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const error = document.querySelector("#function-error");
+  const output = document.querySelector("#function-output");
+  error.textContent = "";
+  output.textContent = "";
+  try {
+    const payload = document.querySelector("#function-payload").value;
+    JSON.parse(payload);
+    const result = await api(`/api/v1/functions/${encodeURIComponent(functionState.name)}/invoke`, {method:"POST", body:payload});
+    output.textContent = JSON.stringify(result, null, 2);
+    toast("Function invocation completed.");
+  } catch (failure) { error.textContent = failure.message; }
+});
+
+async function handleDynamicClick(event) {
   const bucket = event.target.closest("[data-bucket]");
   if (bucket) { storageState.bucket = bucket.dataset.bucket; storageState.prefix = ""; await loadStorage(); return; }
   const prefix = event.target.closest("[data-prefix]");
@@ -449,19 +463,23 @@ document.addEventListener("click", async event => {
   if (chat) { chatState.agentId = chat.dataset.agentChat; chatState.sessionId = ""; document.querySelector("#chat-agent-name").textContent = chat.dataset.agentName; document.querySelector("#chat-log").innerHTML = `<p class="empty">Ask something — the turn runs through the real agent runtime.</p>`; document.querySelector("#chat-dialog").showModal(); return; }
   const traffic = event.target.closest("[data-agent-traffic]");
   if (traffic) {
-    const weight = prompt("Canary weight (0-100):", "10");
-    if (weight === null) return;
-    await api(`/api/v1/agents/${encodeURIComponent(traffic.dataset.agentTraffic)}/traffic`, {method:"PUT", body:JSON.stringify({canary_weight: Number(weight)})});
-    toast(`Canary weight set to ${weight}%.`); await loadAgents(); return;
+    trafficState.agentId = traffic.dataset.agentTraffic;
+    document.querySelector("#traffic-weight").value = "10";
+    document.querySelector("#traffic-value").textContent = "10%";
+    document.querySelector("#traffic-error").textContent = "";
+    document.querySelector("#traffic-dialog").showModal();
+    return;
   }
   const modelTest = event.target.closest("[data-model-test]");
   if (modelTest) { predictState.modelId = modelTest.dataset.modelTest; const model = cachedModels.find(item => item.id === modelTest.dataset.modelTest); document.querySelector("#predict-model-name").textContent = model ? `${model.name} v${model.version}` : "Model"; document.querySelector("#predict-output").textContent = ""; document.querySelector("#predict-dialog").showModal(); return; }
   const fnInvoke = event.target.closest("[data-function-invoke]");
   if (fnInvoke) {
-    const payload = prompt("JSON payload:", "{}");
-    if (payload === null) return;
-    try { const result = await api(`/api/v1/functions/${encodeURIComponent(fnInvoke.dataset.functionInvoke)}/invoke`, {method:"POST", body: payload}); toast(`Function replied: ${JSON.stringify(result).slice(0, 120)}`); }
-    catch (failure) { toast(failure.message); }
+    functionState.name = fnInvoke.dataset.functionInvoke;
+    document.querySelector("#function-name").textContent = `Invoke ${functionState.name}`;
+    document.querySelector("#function-payload").value = "{}";
+    document.querySelector("#function-error").textContent = "";
+    document.querySelector("#function-output").textContent = "";
+    document.querySelector("#function-dialog").showModal();
     return;
   }
   const runRow = event.target.closest("[data-run-id]");
@@ -481,6 +499,9 @@ document.addEventListener("click", async event => {
   }
   const connectionTest = event.target.closest("[data-connection-test]");
   if (connectionTest) { await api(`/api/v1/connections/${encodeURIComponent(connectionTest.dataset.connectionTest)}/test`, {method:"POST", body:"{}"}); toast("Connection check completed."); await loadComponents(); }
+}
+document.addEventListener("click", event => {
+  handleDynamicClick(event).catch(failure => toast(failure.message));
 });
 
 Promise.all([loadMe(), loadDashboard(), loadProjects(), loadRuns()]).catch(error => toast(error.message));
