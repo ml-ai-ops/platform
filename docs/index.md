@@ -37,7 +37,8 @@ production.
 
 ## What you can do with it
 
-Run `make local-up`, open <http://localhost:8080>, and the entire lifecycle works:
+Run `make local-up`, open the landing page at <http://localhost:8080>, then enter
+the console at <http://localhost:8080/console.html>. The entire lifecycle works:
 
 - **Create a project** from a template and get a clean workspace.
 - **Submit a pipeline** that *really executes* — multi-step containers run through

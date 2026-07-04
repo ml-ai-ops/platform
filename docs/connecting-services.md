@@ -38,7 +38,8 @@ Two DNS worlds:
 
 | Service | From your machine | Inside the stack | Credentials (local defaults) |
 | --- | --- | --- | --- |
-| Console + API (gateway) | http://localhost:8080 | `http://gateway:8080` | none locally (RBAC role = `MLAIOPS_LOCAL_ROLE`, default admin) |
+| Landing page (gateway) | http://localhost:8080 | `http://gateway:8080` | none |
+| Console + API (gateway) | http://localhost:8080/console.html | `http://gateway:8080` | none locally (RBAC role = `MLAIOPS_LOCAL_ROLE`, default admin) |
 | Jupyter workbench | http://localhost:8888 | `http://jupyter:8888` | token `mlaiops-local` (`JUPYTER_TOKEN`) |
 | MLflow tracking/registry | http://localhost:15000 | `http://mlflow:5000` | none |
 | Prefect UI/API | http://localhost:4200 | `http://prefect-server:4200` | none |

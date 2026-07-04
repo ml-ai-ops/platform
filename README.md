@@ -39,7 +39,8 @@ make install
 make run
 ```
 
-Open <http://localhost:8080>, or use the SDK:
+Open the landing page at <http://localhost:8080> and the console at
+<http://localhost:8080/console.html>, or use the SDK:
 
 ```python
 from mlaiops_sdk import MLAIOpsClient

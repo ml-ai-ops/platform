@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus Console — ML work without the maze</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-bar">
+    <button class="icon-button" id="sidebar-toggle" aria-label="Collapse navigation" aria-expanded="true" title="Collapse navigation">☰</button>
+    <a class="app-brand" href="#" data-view-target="overview"><span class="brand-mark">N</span><b>Nexus</b></a>
+    <span class="workspace-label">ML Operations</span>
+    <span class="app-spacer"></span>
+    <button class="app-action" id="refresh-view">Refresh</button>
+    <button class="app-action" id="open-help">Help</button>
+    <span class="menu-user" id="menu-user"></span>
+    <span class="menu-status" id="live-indicator">●&nbsp; Local Cluster&nbsp;&nbsp; live</span>
+  </div>
+  <div class="shell">
+    <aside>
+      <a class="brand" href="#"><span class="brand-mark">N</span><span>Nexus</span></a>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
+        <button class="nav-item" data-view="projects"><span>◇</span> Projects</button>
+        <button class="nav-item" data-view="pipelines"><span>↯</span> Pipelines</button>
+        <button class="nav-item" data-view="models"><span>◉</span> Models</button>
+        <button class="nav-item" data-view="agents"><span>✦</span> Agents</button>
+        <button class="nav-item" data-view="features"><span>▤</span> Features</button>
+        <button class="nav-item" data-view="storage"><span>▣</span> Storage</button>
+        <button class="nav-item" data-view="realtime"><span>≈</span> Real-Time</button>
+        <button class="nav-item" data-view="catalog"><span>▦</span> Catalog</button>
+        <button class="nav-item" data-view="platform"><span>◎</span> Platform</button>
+        <button class="nav-item" data-view="profile"><span>♙</span> My access</button>
+        <button class="nav-item" data-view="access" data-admin-only hidden><span>◈</span> Users &amp; access</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="cluster user-chip"><i id="user-dot"></i><span><b id="user-name">…</b><small id="user-role">resolving identity</small></span></div>
+        <div class="cluster"><i></i><span><b>Local workspace</b><small>Gateway connected</small></span></div>
+        <a href="/">Nexus home</a>
+        <a href="/api-docs.html" target="_blank">API reference ↗</a>
+        <a href="#" id="workbench-link" target="_blank">Jupyter workbench ↗</a>
+        <a href="#" id="ide-link" target="_blank">IDE workspace ↗</a>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div><p class="eyebrow">ML WORKSPACE</p><h1 id="page-title">Good morning, builder.</h1></div>
+        <button class="primary" id="new-project" data-perm="projects_write">＋ New project</button>
+      </header>
+
+      <section id="overview" class="view active">
+        <div class="hero">
+          <div><span class="pill">YOUR GOLDEN PATH</span><h2>From idea to a reliable model,<br>without the platform archaeology.</h2>
+          <p>Start with a proven project shape. Nexus wires the workflow together and tells you exactly what is real, missing, or next.</p></div>
+          <div class="progress-ring" id="progress-ring"><strong>0%</strong><span>ready</span></div>
+        </div>
+
+        <div class="stat-grid">
+          <article class="summary-link" role="button" tabindex="0" data-view-target="projects"><span>Projects</span><strong id="stat-projects">—</strong><small>in this workspace</small></article>
+          <article class="summary-link" role="button" tabindex="0" data-view-target="pipelines"><span>Active runs</span><strong id="stat-runs">—</strong><small>queued or running</small></article>
+          <article class="summary-link" role="button" tabindex="0" data-view-target="platform"><span>Platform health</span><strong id="stat-health">—</strong><small>components connected</small></article>
+        </div>
+
+        <div class="split">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">QUICK START</p><h3>Keep your momentum</h3></div></div>
+            <ol class="checklist">
+              <li class="done"><span>✓</span><div><b>Create a workspace</b><small>Your local control plane is running.</small></div></li>
+              <li class="done"><span>✓</span><div><b>Choose a project template</b><small>Start with sane conventions, not an empty folder.</small></div></li>
+              <li><span>3</span><div><b>Connect your infrastructure</b><small>Bring Kubernetes, MLflow, Feast and object storage online.</small></div><button data-view-target="platform">Configure</button></li>
+              <li><span>4</span><div><b>Ship your first real run</b><small>Submit the sample pipeline to your connected engine.</small></div><button data-view-target="pipelines">Run</button></li>
+            </ol>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">RECENT ACTIVITY</p><h3>Pipeline runs</h3></div><button class="link" data-view-target="pipelines">View all</button></div>
+            <div id="recent-runs" class="run-list loading">Loading runs…</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Your projects</h2><p>Each project gets a clear path from exploration to production.</p></div></div><div id="project-grid" class="card-grid"></div></section>
+
+      <section id="pipelines" class="view">
+        <div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>Real execution through the pipeline engine — every step reported live.</p></div><button class="primary" id="run-pipeline" data-perm="pipelines_write">▶ Run pipeline</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div>
+      </section>
+
+      <section id="models" class="view">
+        <div class="section-heading"><div><p class="eyebrow">MODEL LIFECYCLE</p><h2>Registry and deployments</h2><p>Evaluation gates, promotion, live serving, canary traffic and rollback.</p></div></div>
+        <div class="panel chart-panel"><div class="panel-heading"><div><p class="eyebrow">EXPERIMENT PORTAL</p><h3>Model quality by version</h3></div><select id="metric-select"></select></div><canvas id="metric-chart" height="160"></canvas></div>
+        <div id="model-grid" class="card-grid"></div>
+      </section>
+
+      <section id="agents" class="view">
+        <div class="section-heading"><div><p class="eyebrow">AGENT OPERATIONS</p><h2>Agents and live sessions</h2><p>Deployments, tools, live sessions, traces, prompts, token usage and cost.</p></div></div>
+        <div id="agent-summary" class="stat-grid"></div>
+        <div id="agent-grid" class="card-grid"></div>
+        <div class="split">
+          <article class="panel table-wrap agent-traces"><div class="panel-heading"><div><p class="eyebrow">SESSION MONITOR</p><h3>Live sessions</h3></div></div><table><thead><tr><th>Session</th><th>Agent</th><th>Node</th><th>Status</th><th>Turns</th><th>Tokens</th><th>Cost</th></tr></thead><tbody id="session-table"></tbody></table></article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">PROMPT LIBRARY</p><h3>Langfuse prompts</h3></div></div><div id="prompt-list" class="prompt-list"></div></article>
+        </div>
+      </section>
+
+      <section id="features" class="view">
+        <div class="section-heading"><div><p class="eyebrow">FEATURE STORE</p><h2>Feature catalog</h2><p>Version-controlled definitions, online materialization status, and schemas.</p></div><input type="search" id="feature-search" placeholder="Search feature views…"></div>
+        <div id="feature-grid" class="card-grid"></div>
+      </section>
+
+      <section id="storage" class="view">
+        <div class="section-heading"><div><p class="eyebrow">ARTIFACTS &amp; ENDPOINTS</p><h2>Storage and endpoint explorer</h2><p>Browse the object store, live inference endpoints, and serverless functions.</p></div></div>
+        <div class="split storage-layout">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">OBJECT STORE</p><h3 id="storage-title">Buckets</h3></div><button class="link" id="storage-up" hidden>← Back</button></div><div id="storage-browser" class="storage-browser"></div></article>
+          <div class="endpoint-stack">
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">LIVE ENDPOINTS</p><h3>Model endpoints</h3></div></div><div id="endpoint-list" class="endpoint-list"></div></article>
+            <article class="panel"><div class="panel-heading"><div><p class="eyebrow">SERVERLESS</p><h3>Functions</h3></div></div><div id="function-list" class="endpoint-list"></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="realtime" class="view">
+        <div class="section-heading"><div><p class="eyebrow">STREAM PROCESSING</p><h2>Real-time AI</h2><p>Live event scoring through Kafka, the feature store, and served models and agents.</p></div></div>
+        <div id="realtime-grid" class="card-grid realtime-grid"></div>
+        <article class="panel"><div class="panel-heading"><div><p class="eyebrow">TRY IT</p><h3>Produce demo events</h3></div></div><pre class="hint">python -m realtime.produce --demo fraud --count 5
+python -m realtime.produce --demo callcenter --count 2
+python -m realtime.produce --demo recommendations --count 2</pre></article>
+      </section>
+
+      <section id="catalog" class="view"><div class="section-heading"><div><p class="eyebrow">DISCOVERABILITY</p><h2>Shared catalog</h2><p>Models, features, agents, and tools—searchable and understandable.</p></div><div class="filters"><button class="active" data-kind="">All</button><button data-kind="model">Models</button><button data-kind="feature">Features</button><button data-kind="agent">Agents</button><button data-kind="tool">Tools</button></div></div><div id="catalog-grid" class="card-grid"></div></section>
+
+      <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection" data-perm="connections_write">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
+
+      <section id="profile" class="view">
+        <div class="section-heading"><div><p class="eyebrow">YOUR AUTHORIZATION</p><h2>My access</h2><p>Your effective role, assigned services, project scope, and resource allocation.</p></div><button class="primary" id="request-access">Request access</button></div>
+        <div id="my-access-summary"></div>
+      </section>
+
+      <section id="access" class="view">
+        <div class="section-heading"><div><p class="eyebrow">IDENTITY &amp; CAPACITY</p><h2>Users &amp; access</h2><p>Assign services, projects, storage, and workspace compute. Unassigned access is denied.</p></div><button class="primary" id="add-user-access" data-perm="access_manage">＋ Provision user</button></div>
+        <div class="access-admin-stack">
+          <article class="panel table-wrap"><div class="panel-heading table-heading"><div><p class="eyebrow">APPROVAL QUEUE</p><h3>Access requests</h3></div><span class="tag" id="access-request-count">0 pending</span></div><table><thead><tr><th>Requester</th><th>Requested services</th><th>Reason</th><th>Submitted</th><th>Status</th><th></th></tr></thead><tbody id="access-request-table"></tbody></table></article>
+          <article class="panel table-wrap"><div class="panel-heading table-heading"><div><p class="eyebrow">PROVISIONED IDENTITIES</p><h3>Users</h3></div></div><table><thead><tr><th>User</th><th>Role</th><th>Services</th><th>Compute</th><th>Storage</th><th>Status</th><th></th></tr></thead><tbody id="access-table"></tbody></table></article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="project-dialog">
+    <form id="project-form">
+      <p class="eyebrow">NEW PROJECT</p><h2>What are you building?</h2><p>Pick the closest starting point. You can change every part later.</p>
+      <label>Project name<input name="name" required minlength="3" placeholder="e.g. churn-prediction"></label>
+      <label>What is it for?<textarea name="description" placeholder="A short, useful description"></textarea></label>
+      <label>Starting template<select name="template"><option value="tabular-classification">Tabular classification</option><option value="forecasting">Time-series forecasting</option><option value="rag-agent">RAG / AI agent</option><option value="blank">Blank expert workspace</option></select></label>
+      <p class="form-error" id="form-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Create project</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="submit-dialog">
+    <form id="submit-form">
+      <p class="eyebrow">RUN PIPELINE</p><h2>Submit a real run</h2><p>The engine executes each step in a container and reports back live.</p>
+      <label>Project<select name="project_id" id="submit-project"></select></label>
+      <label>Pipeline<select name="name"><option value="training-pipeline">training-pipeline</option></select></label>
+      <p class="form-error" id="submit-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Submit run</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="connection-dialog">
+    <form id="connection-form">
+      <p class="eyebrow">CONNECT SERVICE</p><h2>Add infrastructure</h2><p>Nexus stores only a Kubernetes Secret reference, never raw credentials.</p>
+      <label>Service<select name="type"><option value="kubernetes">Kubernetes</option><option value="mlflow">MLflow</option><option value="s3">S3 / MinIO</option><option value="kafka">Kafka REST</option><option value="langfuse">Langfuse</option><option value="prefect">Prefect</option><option value="redis">Redis / Feast</option></select></label>
+      <label>Connection name<input name="name" required placeholder="e.g. production-mlflow"></label>
+      <label>Health endpoint<input name="endpoint" required type="url" placeholder="https://mlflow.example.com/health"></label>
+      <label>Kubernetes Secret<input name="secret_ref" required placeholder="mlflow-credentials"></label>
+      <p class="form-error" id="connection-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save and test</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="access-dialog">
+    <form id="access-form" class="provisioning-form">
+      <header class="modal-header"><p class="eyebrow">USER PROVISIONING</p><h2>Assign platform access</h2><p>The subject must exactly match the identity provider's <code>sub</code> claim.</p></header>
+      <div class="modal-scroll">
+        <input name="original_subject" type="hidden"><input name="request_id" type="hidden">
+        <section class="form-section"><div class="form-section-title"><span>1</span><div><h3>Identity</h3><p>Who receives this access?</p></div></div>
+          <div class="form-grid"><label>Identity subject<input name="subject" required placeholder="e.g. 00u123abc"></label><label>Email<input name="email" type="email" placeholder="user@example.com"></label><label>Role<select name="role"><option value="user">Normal user</option><option value="admin">Administrator</option></select></label></div>
+        </section>
+        <section class="form-section"><div class="form-section-title"><span>2</span><div><h3>Services and projects</h3><p>Apply least privilege; users can request more later.</p></div></div>
+          <div class="checkbox-grid" id="service-grants"></div><label>Assigned project IDs<input name="project_ids" placeholder="prj-a, prj-b"></label>
+        </section>
+        <section class="form-section"><div class="form-section-title"><span>3</span><div><h3>Resource allocation</h3><p>Set hard workspace and execution boundaries.</p></div></div>
+          <div class="quota-grid"><label>vCPUs<input name="vcpus" type="number" min="0" value="2"></label><label>Memory (GB)<input name="memory_gb" type="number" min="0" value="4"></label><label>Maximum VMs<input name="max_vms" type="number" min="0" value="1"></label><label>Maximum projects<input name="max_projects" type="number" min="0" value="2"></label><label>Concurrent runs<input name="max_runs" type="number" min="0" value="1"></label><label>Storage (GB)<input name="storage_gb" type="number" min="0" value="10"></label></div>
+          <label>Storage buckets<input name="buckets" placeholder="mlaiops-artifacts, user-data"></label>
+        </section>
+        <section class="form-section form-section-warning"><label class="inline-check"><input name="disabled" type="checkbox"> Suspend this user immediately</label></section>
+      </div>
+      <footer class="modal-footer"><p class="form-error" id="access-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save access</button></div></footer>
+    </form>
+  </dialog>
+
+  <dialog id="access-request-dialog">
+    <form id="access-request-form" class="provisioning-form compact-modal">
+      <header class="modal-header"><p class="eyebrow">ACCESS REQUEST</p><h2>Request platform access</h2><p>Tell your platform administrators what you need and why.</p></header>
+      <div class="modal-scroll"><section class="form-section"><div class="form-section-title"><span>1</span><div><h3>Services</h3><p>Select only the capabilities needed for your work.</p></div></div><div class="checkbox-grid" id="request-service-grants"></div></section><section class="form-section"><div class="form-section-title"><span>2</span><div><h3>Business reason</h3><p>Include the project, team, and expected usage.</p></div></div><label>Reason<textarea name="reason" required minlength="10" rows="5" placeholder="I need pipelines and models for the customer churn project…"></textarea></label></section></div>
+      <footer class="modal-footer"><p class="form-error" id="access-request-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Submit request</button></div></footer>
+    </form>
+  </dialog>
+
+  <dialog id="chat-dialog">
+    <div class="detail-sheet chat-sheet">
+      <p class="eyebrow">AGENT TEST CONSOLE</p><h2 id="chat-agent-name">Agent</h2>
+      <div id="chat-log" class="chat-log"><p class="empty">Ask something — the turn runs through the real agent runtime.</p></div>
+      <form id="chat-form"><input id="chat-input" placeholder="e.g. When are invoices issued?" autocomplete="off" required><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Send</button></form>
+    </div>
+  </dialog>
+
+  <dialog id="predict-dialog">
+    <div class="detail-sheet">
+      <p class="eyebrow">INFERENCE TEST CONSOLE</p><h2 id="predict-model-name">Model</h2>
+      <form id="predict-form">
+        <label>Request payload (mlflow /invocations)<textarea id="predict-input" rows="5">{"inputs": [[0.1, -1.2, 0.5, 2.0, 0.3, -0.7, 1.1, 0.0, -0.4, 0.9, -1.5, 0.2]]}</textarea></label>
+        <div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Send prediction request</button></div>
+      </form>
+      <pre id="predict-output" class="hint"></pre>
+    </div>
+  </dialog>
+
+  <dialog id="traffic-dialog">
+    <form id="traffic-form">
+      <p class="eyebrow">AGENT TRAFFIC</p><h2>Set canary traffic</h2><p>Choose the percentage of requests routed to the canary version.</p>
+      <label>Canary weight <span id="traffic-value">10%</span><input id="traffic-weight" name="canary_weight" type="range" min="0" max="100" value="10"></label>
+      <p class="form-error" id="traffic-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Update traffic</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="function-dialog">
+    <form id="function-form">
+      <p class="eyebrow">SERVERLESS FUNCTION</p><h2 id="function-name">Invoke function</h2>
+      <label>JSON payload<textarea id="function-payload" rows="6">{}</textarea></label>
+      <p class="form-error" id="function-error"></p><pre id="function-output" class="hint"></pre>
+      <div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Invoke function</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="about-dialog"><div class="detail-sheet"><p class="eyebrow">ABOUT</p><h2>Nexus</h2><div id="about-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <dialog id="preview-dialog"><div class="detail-sheet"><div id="preview-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <dialog id="run-dialog"><div class="detail-sheet"><div id="run-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <dialog id="metadata-dialog"><div class="detail-sheet"><div id="metadata-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
+  <div id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

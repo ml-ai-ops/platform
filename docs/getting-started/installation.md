@@ -35,9 +35,11 @@ make local-up
 The first run builds several images (Go services, MLflow, agent runtime, pipeline
 runner, Jupyter workbench), so it takes a few minutes. Subsequent runs are fast.
 
-When it finishes, open the console:
+When it finishes, open the landing page:
 
 <http://localhost:8080>
+
+The operational console is at <http://localhost:8080/console.html>.
 
 ### Verify it works
 
@@ -59,7 +61,8 @@ The one skip is OpenFaaS (a VM-level install, by design).
 
 | Service | URL | Credentials (local defaults) |
 | --- | --- | --- |
-| Console + API | <http://localhost:8080> | none (RBAC role from `MLAIOPS_LOCAL_ROLE`, default admin) |
+| Landing page | <http://localhost:8080> | none |
+| Console + API | <http://localhost:8080/console.html> | none (RBAC role from `MLAIOPS_LOCAL_ROLE`, default admin) |
 | Jupyter workbench | <http://localhost:8888> | token `mlaiops-local` |
 | MLflow | <http://localhost:15000> | none |
 | Prefect | <http://localhost:4200> | none |

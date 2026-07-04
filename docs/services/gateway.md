@@ -30,7 +30,8 @@ The heart of Nexus. A single Go binary that serves the **REST API** and the
 
 ### The embedded console
 
-`go/cmd/gateway/web/` holds `index.html`, `app.js`, and `styles.css`, embedded into
+`go/cmd/gateway/web/` holds the landing page (`index.html`, `landing.css`,
+`landing.js`) and console (`console.html`, `app.js`, `styles.css`), embedded into
 the binary. It is dependency-free (no React, no build step). It renders 10 views
 (Overview, Projects, Pipelines, Models, Agents, Features, Storage, Real-Time,
 Catalog, Platform), a role-aware menu bar, a DAG visualizer, a metric chart, chat

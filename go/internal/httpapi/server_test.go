@@ -25,6 +25,26 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestLandingAndConsoleRoutes(t *testing.T) {
+	static, _ := fs.Sub(fstest.MapFS{
+		"index.html":   &fstest.MapFile{Data: []byte("<h1>Nexus landing</h1>")},
+		"console.html": &fstest.MapFile{Data: []byte("<h1>Nexus console</h1>")},
+	}, ".")
+	server := New(store.New(), static)
+	for _, test := range []struct {
+		path, expected string
+	}{
+		{"/", "Nexus landing"},
+		{"/console.html", "Nexus console"},
+	} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), test.expected) {
+			t.Fatalf("GET %s: %d %s", test.path, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestCreateProjectAndSubmitPipeline(t *testing.T) {
 	server := testServer()
 	create := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"name":"Churn model","template":"tabular-classification"}`))
