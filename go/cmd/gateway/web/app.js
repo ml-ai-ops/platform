@@ -43,7 +43,7 @@ function applyPermissions() {
   document.querySelector("#user-name").textContent = name;
   document.querySelector("#user-role").textContent = `${me.roles.join(", ") || "no role"} · ${me.mode} mode`;
   document.querySelector("#menu-user").textContent = `${name} · ${me.roles.join(", ")}`;
-  document.querySelector("#logout-link").hidden = false;
+  document.querySelectorAll(".logout-action").forEach(link => { link.hidden = false; });
   document.querySelectorAll("[data-admin-only]").forEach(node => { node.hidden = !isAdmin(); });
   document.querySelectorAll(".nav-item[data-view]").forEach(node => {
     if (!["access", "profile"].includes(node.dataset.view)) node.hidden = !hasService(node.dataset.view);
