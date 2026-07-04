@@ -56,7 +56,7 @@ open-source, non-proprietary tools:
 
 ## Two languages, clear ownership
 
-Nexus follows a deliberate split (from the platform PRD):
+Nexus follows a deliberate split:
 
 - **Go owns infrastructure** — the gateway/control-plane API, the Kubernetes
   operator, the feature gateway, the storage proxy, the trace proxy, the serving

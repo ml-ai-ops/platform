@@ -85,7 +85,7 @@ Maintained but **not required** for local or single-VM use:
 
 ## What is deliberately excluded
 
-The platform PRD excludes a specific set of proprietary tools. Serverless is
+The platform excludes a specific set of proprietary tools. Serverless is
 delivered with **OpenFaaS/faasd** (never Nuclio), and `make verify` includes a scan
 that fails the build if any excluded product name appears in the Go source or
 `config/`. Serving is delivered with **mlflow-serve** rather than KServe/Knative;

@@ -87,7 +87,7 @@ func (l Langfuse) Ingest(ctx context.Context, batch []map[string]any) error {
 }
 
 // Prefect drives real pipeline execution against a self-hosted Prefect
-// server (the Compose-native fulfilment of the PRD pipeline engine; KFP
+// server (the Compose-native fulfilment of the pipeline engine; KFP
 // remains the Kubernetes path).
 type Prefect struct{ client *Client }
 
@@ -128,8 +128,8 @@ func (p Prefect) CancelFlowRun(ctx context.Context, flowRunID string) error {
 }
 
 // OpenFaaS is the platform's serverless AI deployment integration, chosen to
-// satisfy the PRD serverless requirement without any excluded technology
-// (PRD section 2). Locally and on a VM it targets faasd; on Kubernetes the
+// satisfy the serverless requirement without any excluded technology.
+// Locally and on a VM it targets faasd; on Kubernetes the
 // same API is served by OpenFaaS.
 type OpenFaaS struct {
 	client   *Client

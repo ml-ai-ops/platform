@@ -1,7 +1,7 @@
 # Nexus: ml-ai-ops-platform
 
 Nexus is a self-hosted control plane for classical ML, data-centric AI, and agentic AI
-workloads. Its architecture follows [`mlops-platform-prd.md`](mlops-platform-prd.md): Go owns
+workloads. Go owns
 infrastructure services and Python owns the ML-facing SDK and workload primitives.
 
 ## Backend implemented
@@ -110,4 +110,4 @@ This repository implements the platform-owned integration and control services. 
 fork or vendor Kafka, MinIO, KFP/Argo, MLflow, Feast, KServe, Redis, PostgreSQL, or Langfuse.
 Operators install those upstream systems and connect them through standard APIs.
 
-The architecture exclusion policy from the PRD is enforced in CI.
+The architecture exclusion policy is enforced in CI.

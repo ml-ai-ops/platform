@@ -299,7 +299,7 @@ func (s *Server) reportMaterialization(w http.ResponseWriter, r *http.Request) {
 }
 
 // storageProxy forwards Storage Explorer reads to the storage proxy, which is
-// the sole holder of object-store credentials (PRD section 5.2.5).
+// the sole holder of object-store credentials.
 func (s *Server) storageProxy(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		base := os.Getenv("STORAGE_PROXY_URL")

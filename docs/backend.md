@@ -1,6 +1,6 @@
 # Backend architecture
 
-The repository implements the platform-owned services from the PRD. Large upstream systems
+The repository implements the platform-owned services. Large upstream systems
 remain independently deployable dependencies and are reached through their standard APIs.
 
 ## Service inventory
@@ -12,7 +12,7 @@ remain independently deployable dependencies and are reached through their stand
 | `mlaiops-feature-gateway`   |         8083 | Feast-compatible online feature retrieval                 |
 | `mlaiops-storage-proxy`     |         8084 | Short-lived AWS SigV4 S3 URLs                             |
 | `mlaiops-trace-proxy`       |         8081 | OpenAI-compatible reverse proxy and trace emission        |
-| `mlaiops-metrics-collector` |         9090 | Prometheus component health + PRD 8.2.1 platform metrics  |
+| `mlaiops-metrics-collector` |         9090 | Prometheus component health + platform metrics  |
 | `mlaiops-serving-manager`   |         8085 | Real model serving via mlflow-serve containers (Docker)   |
 | `mlaiops`                   |          n/a | Operator and engineer CLI                                 |
 

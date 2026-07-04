@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// PlatformCollector aggregates the PRD section 8.2.1 platform metrics that
+// PlatformCollector aggregates the platform metrics that
 // Prometheus cannot scrape directly: agent token usage and cost from the
 // gateway, live session counts, pipeline run outcomes, and real-time
 // processing statistics. All values are read from the gateway's control-plane
@@ -135,7 +135,7 @@ func (p *PlatformCollector) Prometheus() string {
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	b.WriteString("# Platform metrics aggregated from control-plane state (PRD 8.2.1).\n")
+	b.WriteString("# Platform metrics aggregated from control-plane state.\n")
 	for _, key := range keys {
 		_, _ = fmt.Fprintf(&b, "%s %g\n", key, p.metrics[key])
 	}

@@ -59,7 +59,7 @@ default Compose stack; used only with the optional Kubernetes deployment.
 
 ## metrics-collector
 
-Prometheus exposition of platform metrics (PRD §8.2.1): pipeline duration, inference
+Prometheus exposition of platform metrics: pipeline duration, inference
 latency/requests, feature-lookup latency, LLM tokens/cost, agent quality, and active
 sessions. Ships as `mlaiops-metrics-collector`, default port `9090`.
 

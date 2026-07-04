@@ -78,7 +78,7 @@ command.
 ### `metrics`
 
 `collector.go` (component health scraping) and `platform.go` (`PlatformCollector`,
-the PRD §8.2.1 metric set: pipeline outcomes, agent usage, real-time stats).
+the platform metric set: pipeline outcomes, agent usage, real-time stats).
 Prometheus exposition. Backs the metrics-collector command.
 
 ### `operator`

@@ -12,7 +12,7 @@ import (
 // one JSON document per (feature service, entity) under
 // mlaiops:features:<service>:<entityKey>. Materialization jobs write through
 // the feature-gateway PUT endpoint; lookups are single Redis GETs, which keeps
-// the hot path inside the PRD's <5ms P99 budget.
+// the hot path inside the <5ms P99 budget.
 type RedisStore struct {
 	client *redis.Client
 	ttl    time.Duration

@@ -83,7 +83,7 @@ scale-to-zero. This is a VM-level install (not part of the default Compose stack
 and is the one capability the demo smoke marks as *skipped* locally by design.
 
 !!! info "Why OpenFaaS and not Nuclio"
-    The platform PRD bans certain proprietary tools. Serverless is delivered with
+    The platform excludes certain proprietary tools. Serverless is delivered with
     OpenFaaS/faasd, which is fully open source and carries to OpenFaaS-on-Kubernetes
     at scale. The `make verify` gate greps the codebase to enforce this.
 
