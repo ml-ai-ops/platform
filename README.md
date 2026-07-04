@@ -87,9 +87,6 @@ Python SDK / CLI / UI
   Kubernetes CRDs ──► operator reconciliation ──► workloads and traffic
 ```
 
-See [Backend architecture](docs/backend.md) for service ports, configuration, integration
-contracts, deployment resources, and explicit production gates.
-
 ## Documentation
 
 Full documentation lives in [`docs/`](docs/index.md) and builds into a browsable site

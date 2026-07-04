@@ -106,7 +106,6 @@ nav:
       - REST API: reference/api.md
       - RBAC & security: reference/rbac.md
       - CLI: reference/cli.md
-      - Backend architecture: backend.md
   - Operations:
       - Local operations: operations/local.md
       - Public hosting: hosting.md

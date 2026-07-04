@@ -31,8 +31,8 @@ making them talk to each other. Nexus wires them together for you:
 
 ## Capability map
 
-Nexus was built to satisfy a specific set of must-have capabilities using only
-open-source, non-proprietary tools:
+Nexus delivers a comprehensive set of capabilities using only open-source,
+non-proprietary tools:
 
 | Capability | How Nexus delivers it |
 | --- | --- |

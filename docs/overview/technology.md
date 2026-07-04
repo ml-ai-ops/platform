@@ -7,7 +7,7 @@ reflect the images and dependency pins in the repository.
 
 | Technology | Version | Role |
 | --- | --- | --- |
-| **Go** | 1.23 (`go/go.mod`) | Control plane, operator, feature gateway, storage proxy, trace proxy, serving manager, metrics collector, CLI |
+| **Go** | 1.25 (`go/go.mod`) | Control plane, operator, feature gateway, storage proxy, trace proxy, serving manager, metrics collector, CLI |
 | **Python** | 3.11 (SDK, runtime); 3.10 (pipeline runner & serving, pinned for parity) | SDK, agent runtime, pipelines, features, real-time demos |
 | **JavaScript** | vanilla (no framework) | Embedded web console, no build toolchain |
 
@@ -83,12 +83,18 @@ Maintained but **not required** for local or single-VM use:
 | **Backup** | `config/backup/` | CloudNativePG backup |
 | **Kind cluster** | `deploy/kind/cluster.yaml` | Local Kubernetes cluster definition |
 
-## What is deliberately excluded
+## Technology choices
 
-The platform excludes a specific set of proprietary tools. Serverless is
-delivered with **OpenFaaS/faasd** (never Nuclio), and `make verify` includes a scan
-that fails the build if any excluded product name appears in the Go source or
-`config/`. Serving is delivered with **mlflow-serve** rather than KServe/Knative;
-pipelines with **Prefect** rather than KFP/Argo; the mesh with **Caddy** rather than
-Istio. The Kubernetes-native equivalents remain available on the documented scale
-path.
+The platform uses open-source, non-proprietary tools throughout. Where a
+capability is commonly associated with a Kubernetes-only tool, Nexus uses a
+Docker-friendly equivalent that runs identically on a laptop, a single VM, or a
+cluster:
+
+| Capability | Nexus uses | Kubernetes-native equivalent |
+| --- | --- | --- |
+| Model serving | `mlflow models serve` containers | KServe / Knative |
+| Pipelines | Prefect | KFP / Argo |
+| Serverless | OpenFaaS / faasd | Knative |
+| Edge / mesh | Caddy | Istio |
+
+The Kubernetes-native equivalents remain available on the documented scale path.
