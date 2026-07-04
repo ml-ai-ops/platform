@@ -7,6 +7,10 @@ type Repository interface {
 	AccessFor(string) (api.UserAccess, error)
 	UpsertUserAccess(string, api.UpsertUserAccessRequest, string) (api.UserAccess, error)
 	DeleteUserAccess(string, string) error
+	AccessRequests() []api.AccessRequest
+	AccessRequestsFor(string) []api.AccessRequest
+	CreateAccessRequest(string, string, api.CreateAccessRequest) (api.AccessRequest, error)
+	ReviewAccessRequest(string, api.ReviewAccessRequest, string) (api.AccessRequest, error)
 	Projects() []api.Project
 	Runs() []api.PipelineRun
 	Models() []api.Model

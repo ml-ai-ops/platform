@@ -39,6 +39,10 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/users", server.userAccess)
 	mux.HandleFunc("PUT /api/v1/admin/users/{subject}", server.upsertUserAccess)
 	mux.HandleFunc("DELETE /api/v1/admin/users/{subject}", server.deleteUserAccess)
+	mux.HandleFunc("GET /api/v1/access-requests", server.myAccessRequests)
+	mux.HandleFunc("POST /api/v1/access-requests", server.createAccessRequest)
+	mux.HandleFunc("GET /api/v1/admin/access-requests", server.accessRequests)
+	mux.HandleFunc("PATCH /api/v1/admin/access-requests/{id}", server.reviewAccessRequest)
 	mux.HandleFunc("GET /api/v1/dashboard", server.dashboard)
 	mux.HandleFunc("GET /api/v1/onboarding/readiness", server.readiness)
 	mux.HandleFunc("GET /api/v1/projects", server.projects)
@@ -153,6 +157,37 @@ func (s *Server) deleteUserAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) myAccessRequests(w http.ResponseWriter, r *http.Request) {
+	items := s.store.AccessRequestsFor(principal(r).Subject)
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+func (s *Server) createAccessRequest(w http.ResponseWriter, r *http.Request) {
+	var req api.CreateAccessRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	value := principal(r)
+	request, err := s.store.CreateAccessRequest(value.Subject, value.Email, req)
+	writeMutation(w, request, err, http.StatusCreated)
+}
+
+func (s *Server) accessRequests(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.AccessRequests()
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+func (s *Server) reviewAccessRequest(w http.ResponseWriter, r *http.Request) {
+	var req api.ReviewAccessRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	request, err := s.store.ReviewAccessRequest(r.PathValue("id"), req, actor(r))
+	writeMutation(w, request, err, http.StatusOK)
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

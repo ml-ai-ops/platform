@@ -17,17 +17,18 @@ var ErrNotFound = errors.New("resource not found")
 var ErrConflict = errors.New("resource already exists")
 
 type state struct {
-	UserAccess  []api.UserAccess   `json:"user_access"`
-	Projects    []api.Project      `json:"projects"`
-	Runs        []api.PipelineRun  `json:"runs"`
-	Models      []api.Model        `json:"models"`
-	Agents      []api.Agent        `json:"agents"`
-	Tools       []api.Tool         `json:"tools"`
-	Connections []api.Connection   `json:"connections"`
-	Audit       []api.AuditEvent   `json:"audit"`
-	Sessions    []api.AgentSession `json:"sessions"`
-	Traces      []api.AgentTrace   `json:"traces"`
-	Features    []api.FeatureView  `json:"features"`
+	UserAccess     []api.UserAccess    `json:"user_access"`
+	AccessRequests []api.AccessRequest `json:"access_requests"`
+	Projects       []api.Project       `json:"projects"`
+	Runs           []api.PipelineRun   `json:"runs"`
+	Models         []api.Model         `json:"models"`
+	Agents         []api.Agent         `json:"agents"`
+	Tools          []api.Tool          `json:"tools"`
+	Connections    []api.Connection    `json:"connections"`
+	Audit          []api.AuditEvent    `json:"audit"`
+	Sessions       []api.AgentSession  `json:"sessions"`
+	Traces         []api.AgentTrace    `json:"traces"`
+	Features       []api.FeatureView   `json:"features"`
 }
 
 func (s *Store) UserAccess() []api.UserAccess {

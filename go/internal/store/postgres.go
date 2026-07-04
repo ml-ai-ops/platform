@@ -78,6 +78,50 @@ func (p *Postgres) Agents() []api.Agent           { return list[api.Agent](p, "a
 func (p *Postgres) Tools() []api.Tool             { return list[api.Tool](p, "tool") }
 func (p *Postgres) Connections() []api.Connection { return list[api.Connection](p, "connection") }
 func (p *Postgres) UserAccess() []api.UserAccess  { return list[api.UserAccess](p, "user_access") }
+func (p *Postgres) AccessRequests() []api.AccessRequest {
+	return list[api.AccessRequest](p, "access_request")
+}
+
+func (p *Postgres) AccessRequestsFor(subject string) []api.AccessRequest {
+	result := make([]api.AccessRequest, 0)
+	for _, request := range p.AccessRequests() {
+		if request.Subject == subject {
+			result = append(result, request)
+		}
+	}
+	return result
+}
+
+func (p *Postgres) CreateAccessRequest(subject, email string, req api.CreateAccessRequest) (api.AccessRequest, error) {
+	req, err := validateAccessRequest(req)
+	if err != nil {
+		return api.AccessRequest{}, err
+	}
+	for _, existing := range p.AccessRequestsFor(subject) {
+		if existing.Status == "pending" {
+			return api.AccessRequest{}, errors.New("a pending access request already exists")
+		}
+	}
+	now := time.Now().UTC()
+	request := api.AccessRequest{ID: id("access-request"), Subject: subject, Email: email, Reason: req.Reason, RequestedServices: req.RequestedServices, Status: "pending", CreatedAt: now, UpdatedAt: now}
+	return request, p.write("access_request", request.ID, request, "access.requested", subject, nil)
+}
+
+func (p *Postgres) ReviewAccessRequest(requestID string, req api.ReviewAccessRequest, reviewer string) (api.AccessRequest, error) {
+	if req.Status != "approved" && req.Status != "rejected" {
+		return api.AccessRequest{}, errors.New("status must be approved or rejected")
+	}
+	request, err := get[api.AccessRequest](p, "access_request", requestID)
+	if err != nil {
+		return request, err
+	}
+	if request.Status != "pending" {
+		return request, errors.New("access request has already been reviewed")
+	}
+	request.Status, request.Reviewer, request.ReviewNote = req.Status, reviewer, strings.TrimSpace(req.Note)
+	request.UpdatedAt = time.Now().UTC()
+	return request, p.write("access_request", request.ID, request, "access.request_"+req.Status, reviewer, nil)
+}
 
 func (p *Postgres) AccessFor(subject string) (api.UserAccess, error) {
 	return get[api.UserAccess](p, "user_access", subject)

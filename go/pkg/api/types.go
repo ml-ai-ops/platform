@@ -41,6 +41,29 @@ type UpsertUserAccessRequest struct {
 	Disabled   bool         `json:"disabled"`
 }
 
+type AccessRequest struct {
+	ID                string    `json:"id"`
+	Subject           string    `json:"subject"`
+	Email             string    `json:"email"`
+	Reason            string    `json:"reason"`
+	RequestedServices []string  `json:"requested_services"`
+	Status            string    `json:"status"`
+	Reviewer          string    `json:"reviewer,omitempty"`
+	ReviewNote        string    `json:"review_note,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type CreateAccessRequest struct {
+	Reason            string   `json:"reason"`
+	RequestedServices []string `json:"requested_services"`
+}
+
+type ReviewAccessRequest struct {
+	Status string `json:"status"`
+	Note   string `json:"note"`
+}
+
 type Project struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`

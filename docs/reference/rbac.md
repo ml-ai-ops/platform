@@ -39,6 +39,12 @@ PUT    /api/v1/admin/users/{subject}
 DELETE /api/v1/admin/users/{subject}
 ```
 
+Users who are not covered by an identity-provider group can submit a scoped
+request from **My access → Request access**. Nexus prevents duplicate pending
+requests, records the requested services and business reason, and exposes an
+administrator approval queue. Provisioning from that queue marks the request
+approved; rejection records the reviewer and note. Both actions are audited.
+
 Authorization is enforced in the gateway before handlers run. Collection
 responses are project-filtered, direct resource lookups return `404` when the
 resource is outside the user's scope, storage bucket requests are allow-listed,

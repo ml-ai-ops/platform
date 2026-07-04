@@ -293,6 +293,9 @@ func Allowed(principal Principal, method, path string) bool {
 	if strings.HasPrefix(path, "/api/v1/admin/") {
 		return hasRole(principal, RoleAdmin) || hasRole(principal, RoleOperator)
 	}
+	if path == "/api/v1/access-requests" && (method == http.MethodGet || method == http.MethodPost) {
+		return !hasRole(principal, RoleService) && len(principal.Roles) > 0
+	}
 	read := method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
 	for _, role := range principal.Roles {
 		switch role {

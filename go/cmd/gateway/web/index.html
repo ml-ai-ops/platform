@@ -131,13 +131,16 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
       <section id="platform" class="view"><div class="section-heading"><div><p class="eyebrow">HONEST INFRASTRUCTURE</p><h2>Platform connections</h2><p>Nothing green by wishful thinking. Every connection is actively checked.</p></div><button class="primary" id="add-connection" data-perm="connections_write">＋ Add connection</button></div><div class="platform-layout"><div class="panel"><div class="panel-heading"><div><p class="eyebrow">ONBOARDING</p><h3>Production readiness</h3></div><strong id="readiness-percent">0%</strong></div><ol id="readiness-list" class="checklist"></ol></div><div><div id="connection-grid" class="card-grid connection-grid"></div><div id="component-grid" class="component-grid"></div></div></div></section>
 
       <section id="profile" class="view">
-        <div class="section-heading"><div><p class="eyebrow">YOUR AUTHORIZATION</p><h2>My access</h2><p>Your effective role, assigned services, project scope, and resource allocation.</p></div></div>
+        <div class="section-heading"><div><p class="eyebrow">YOUR AUTHORIZATION</p><h2>My access</h2><p>Your effective role, assigned services, project scope, and resource allocation.</p></div><button class="primary" id="request-access">Request access</button></div>
         <div id="my-access-summary"></div>
       </section>
 
       <section id="access" class="view">
         <div class="section-heading"><div><p class="eyebrow">IDENTITY &amp; CAPACITY</p><h2>Users &amp; access</h2><p>Assign services, projects, storage, and workspace compute. Unassigned access is denied.</p></div><button class="primary" id="add-user-access" data-perm="access_manage">＋ Provision user</button></div>
-        <article class="panel table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Services</th><th>Compute</th><th>Storage</th><th>Status</th><th></th></tr></thead><tbody id="access-table"></tbody></table></article>
+        <div class="access-admin-stack">
+          <article class="panel table-wrap"><div class="panel-heading table-heading"><div><p class="eyebrow">APPROVAL QUEUE</p><h3>Access requests</h3></div><span class="tag" id="access-request-count">0 pending</span></div><table><thead><tr><th>Requester</th><th>Requested services</th><th>Reason</th><th>Submitted</th><th>Status</th><th></th></tr></thead><tbody id="access-request-table"></tbody></table></article>
+          <article class="panel table-wrap"><div class="panel-heading table-heading"><div><p class="eyebrow">PROVISIONED IDENTITIES</p><h3>Users</h3></div></div><table><thead><tr><th>User</th><th>Role</th><th>Services</th><th>Compute</th><th>Storage</th><th>Status</th><th></th></tr></thead><tbody id="access-table"></tbody></table></article>
+        </div>
       </section>
     </main>
   </div>
@@ -173,25 +176,31 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
   </dialog>
 
   <dialog id="access-dialog">
-    <form id="access-form">
-      <p class="eyebrow">USER PROVISIONING</p><h2>Assign platform access</h2><p>The subject must exactly match the identity provider's <code>sub</code> claim.</p>
-      <input name="original_subject" type="hidden">
-      <label>Identity subject<input name="subject" required placeholder="e.g. 00u123abc"></label>
-      <label>Email<input name="email" type="email" placeholder="user@example.com"></label>
-      <label>Role<select name="role"><option value="user">Normal user</option><option value="admin">Administrator</option></select></label>
-      <fieldset><legend>Services</legend><div class="checkbox-grid" id="service-grants"></div></fieldset>
-      <label>Assigned project IDs<input name="project_ids" placeholder="prj-a, prj-b"></label>
-      <div class="quota-grid">
-        <label>vCPUs<input name="vcpus" type="number" min="0" value="2"></label>
-        <label>Memory (GB)<input name="memory_gb" type="number" min="0" value="4"></label>
-        <label>Maximum VMs<input name="max_vms" type="number" min="0" value="1"></label>
-        <label>Maximum projects<input name="max_projects" type="number" min="0" value="2"></label>
-        <label>Concurrent runs<input name="max_runs" type="number" min="0" value="1"></label>
-        <label>Storage (GB)<input name="storage_gb" type="number" min="0" value="10"></label>
+    <form id="access-form" class="provisioning-form">
+      <header class="modal-header"><p class="eyebrow">USER PROVISIONING</p><h2>Assign platform access</h2><p>The subject must exactly match the identity provider's <code>sub</code> claim.</p></header>
+      <div class="modal-scroll">
+        <input name="original_subject" type="hidden"><input name="request_id" type="hidden">
+        <section class="form-section"><div class="form-section-title"><span>1</span><div><h3>Identity</h3><p>Who receives this access?</p></div></div>
+          <div class="form-grid"><label>Identity subject<input name="subject" required placeholder="e.g. 00u123abc"></label><label>Email<input name="email" type="email" placeholder="user@example.com"></label><label>Role<select name="role"><option value="user">Normal user</option><option value="admin">Administrator</option></select></label></div>
+        </section>
+        <section class="form-section"><div class="form-section-title"><span>2</span><div><h3>Services and projects</h3><p>Apply least privilege; users can request more later.</p></div></div>
+          <div class="checkbox-grid" id="service-grants"></div><label>Assigned project IDs<input name="project_ids" placeholder="prj-a, prj-b"></label>
+        </section>
+        <section class="form-section"><div class="form-section-title"><span>3</span><div><h3>Resource allocation</h3><p>Set hard workspace and execution boundaries.</p></div></div>
+          <div class="quota-grid"><label>vCPUs<input name="vcpus" type="number" min="0" value="2"></label><label>Memory (GB)<input name="memory_gb" type="number" min="0" value="4"></label><label>Maximum VMs<input name="max_vms" type="number" min="0" value="1"></label><label>Maximum projects<input name="max_projects" type="number" min="0" value="2"></label><label>Concurrent runs<input name="max_runs" type="number" min="0" value="1"></label><label>Storage (GB)<input name="storage_gb" type="number" min="0" value="10"></label></div>
+          <label>Storage buckets<input name="buckets" placeholder="mlaiops-artifacts, user-data"></label>
+        </section>
+        <section class="form-section form-section-warning"><label class="inline-check"><input name="disabled" type="checkbox"> Suspend this user immediately</label></section>
       </div>
-      <label>Storage buckets<input name="buckets" placeholder="mlaiops-artifacts, user-data"></label>
-      <label class="inline-check"><input name="disabled" type="checkbox"> Suspend this user</label>
-      <p class="form-error" id="access-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save access</button></div>
+      <footer class="modal-footer"><p class="form-error" id="access-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save access</button></div></footer>
+    </form>
+  </dialog>
+
+  <dialog id="access-request-dialog">
+    <form id="access-request-form" class="provisioning-form compact-modal">
+      <header class="modal-header"><p class="eyebrow">ACCESS REQUEST</p><h2>Request platform access</h2><p>Tell your platform administrators what you need and why.</p></header>
+      <div class="modal-scroll"><section class="form-section"><div class="form-section-title"><span>1</span><div><h3>Services</h3><p>Select only the capabilities needed for your work.</p></div></div><div class="checkbox-grid" id="request-service-grants"></div></section><section class="form-section"><div class="form-section-title"><span>2</span><div><h3>Business reason</h3><p>Include the project, team, and expected usage.</p></div></div><label>Reason<textarea name="reason" required minlength="10" rows="5" placeholder="I need pipelines and models for the customer churn project…"></textarea></label></section></div>
+      <footer class="modal-footer"><p class="form-error" id="access-request-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Submit request</button></div></footer>
     </form>
   </dialog>
 

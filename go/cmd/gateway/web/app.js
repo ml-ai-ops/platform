@@ -291,7 +291,7 @@ function accessPayload(form) {
   };
 }
 async function loadAccess() {
-  const data = await api("/api/v1/admin/users");
+  const [data, requests] = await Promise.all([api("/api/v1/admin/users"), api("/api/v1/admin/access-requests")]);
   accessCache = data.items || [];
   document.querySelector("#access-table").innerHTML = accessCache.length ? accessCache.map(item => `<tr>
     <td><b>${escapeHTML(item.email || item.subject)}</b><br><small>${escapeHTML(item.subject)}</small></td>
@@ -301,10 +301,19 @@ async function loadAccess() {
     <td>${status(item.disabled ? "suspended" : "active")}</td>
     <td><button data-access-edit="${escapeHTML(item.subject)}">Edit</button><button class="danger" data-access-delete="${escapeHTML(item.subject)}">Revoke</button></td>
   </tr>`).join("") : `<tr><td colspan="7" class="empty">No users have been provisioned.</td></tr>`;
+  const pending = (requests.items || []).filter(item => item.status === "pending");
+  document.querySelector("#access-request-count").textContent = `${pending.length} pending`;
+  document.querySelector("#access-request-table").innerHTML = (requests.items || []).length ? requests.items.map(item => `<tr>
+    <td><b>${escapeHTML(item.email || item.subject)}</b><br><small>${escapeHTML(item.subject)}</small></td>
+    <td>${item.requested_services.map(service => `<span class="tag">${escapeHTML(service)}</span>`).join(" ")}</td>
+    <td class="request-reason">${escapeHTML(item.reason)}</td><td>${dateTime(item.created_at)}</td><td>${status(item.status)}</td>
+    <td>${item.status === "pending" ? `<button data-request-review="${escapeHTML(item.id)}" data-request-subject="${escapeHTML(item.subject)}">Provision</button><button class="danger" data-request-reject="${escapeHTML(item.id)}">Reject</button>` : `<small>${escapeHTML(item.reviewer || "reviewed")}</small>`}</td>
+  </tr>`).join("") : `<tr><td colspan="6" class="empty">No access requests yet.</td></tr>`;
 }
 
 async function loadMyAccess() {
-  me = {...me, ...await api("/api/v1/me")};
+  const [identity, requests] = await Promise.all([api("/api/v1/me"), api("/api/v1/access-requests")]);
+  me = {...me, ...identity};
   const grant = me.entitlements;
   const services = isAdmin() ? accessServices : (me.services || []);
   const roleState = grant?.disabled ? "suspended" : (me.provisioned || isAdmin() ? "active" : "not_provisioned");
@@ -321,6 +330,9 @@ async function loadMyAccess() {
       </div>
     </article>` : `
     <article class="panel access-allocation"><p class="eyebrow">COMPUTE ALLOCATION</p><h3>Administrative access</h3><p>Administrators are not constrained by user workspace quotas.</p></article>`;
+  const latestRequest = (requests.items || [])[0];
+  document.querySelector("#request-access").disabled = latestRequest?.status === "pending";
+  document.querySelector("#request-access").textContent = latestRequest?.status === "pending" ? "Request pending" : "Request access";
   document.querySelector("#my-access-summary").innerHTML = `
     <div class="access-identity panel">
       <div><span class="role-badge ${escapeHTML(me.roles[0] || "unknown")}">${escapeHTML(me.roles.join(", ") || "no role")}</span><h3>${escapeHTML(me.email || me.subject || "Unknown identity")}</h3><p><code>${escapeHTML(me.subject)}</code> · ${escapeHTML(me.mode)} authentication</p></div>
@@ -329,7 +341,7 @@ async function loadMyAccess() {
     <div class="split">
       <article class="panel"><p class="eyebrow">ASSIGNED SERVICES</p><h3>${services.length} services available</h3><div class="service-grant-grid">${services.map(service => `<button data-view-target="${escapeHTML(service)}" ${["workbench","ide"].includes(service) ? "disabled" : ""}><span>✓</span>${escapeHTML(service)}</button>`).join("") || `<p class="empty">No services assigned.</p>`}</div></article>
       <article class="panel"><p class="eyebrow">PROJECT SCOPE</p><h3>${grant?.project_ids?.length || 0} explicitly assigned</h3><div class="tags">${(grant?.project_ids || []).map(id => `<span class="tag">${escapeHTML(id)}</span>`).join("") || `<span class="tag">${isAdmin() ? "All projects" : "Owned projects only"}</span>`}</div><p class="eyebrow access-subhead">STORAGE BUCKETS</p><div class="tags">${(grant?.storage?.buckets || []).map(name => `<span class="tag">${escapeHTML(name)}</span>`).join("") || `<span class="tag">${isAdmin() ? "All buckets" : "None assigned"}</span>`}</div></article>
-    </div>${allocation}`;
+    </div>${latestRequest ? `<article class="panel access-request-state"><div><p class="eyebrow">LATEST ACCESS REQUEST</p><h3>${escapeHTML(latestRequest.requested_services.join(", "))}</h3><p>${escapeHTML(latestRequest.reason)}</p></div><div>${status(latestRequest.status)}<small>${dateTime(latestRequest.updated_at)}</small></div></article>` : ""}${allocation}`;
 }
 
 Object.assign(viewLoaders, {
@@ -398,6 +410,7 @@ async function showAbout() {
 document.querySelector("#workbench-link").href = `http://${location.hostname}:8888`;
 document.querySelector("#ide-link").href = `http://${location.hostname}:13337`;
 document.querySelector("#service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
+document.querySelector("#request-service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
 sidebarToggle.addEventListener("click", toggleSidebar);
 document.querySelector("#refresh-view").addEventListener("click", () => (viewLoaders[activeView] || loadDashboard)().then(() => toast("View refreshed.")).catch(error => toast(error.message)));
 document.querySelector("#open-help").addEventListener("click", () => showAbout().catch(error => toast(error.message)));
@@ -467,7 +480,7 @@ document.querySelector("#submit-form").addEventListener("submit", async event =>
 document.querySelector("#add-connection").addEventListener("click", () => document.querySelector("#connection-dialog").showModal());
 document.querySelector("#add-user-access").addEventListener("click", () => {
   const form = document.querySelector("#access-form");
-  form.reset(); form.elements.original_subject.value = ""; form.elements.subject.disabled = false;
+  form.reset(); form.elements.original_subject.value = ""; form.elements.request_id.value = ""; form.elements.subject.disabled = false;
   document.querySelector("#access-error").textContent = "";
   document.querySelector("#access-dialog").showModal();
 });
@@ -478,7 +491,25 @@ document.querySelector("#access-form").addEventListener("submit", async event =>
   error.textContent = "";
   try {
     await api(`/api/v1/admin/users/${encodeURIComponent(subject)}`, {method:"PUT", body:JSON.stringify(accessPayload(form))});
+    if (form.elements.request_id.value) {
+      await api(`/api/v1/admin/access-requests/${encodeURIComponent(form.elements.request_id.value)}`, {method:"PATCH", body:JSON.stringify({status:"approved", note:"Provisioned through the admin console"})});
+    }
     form.reset(); document.querySelector("#access-dialog").close(); toast("User access saved."); await loadAccess();
+  } catch (failure) { error.textContent = failure.message; }
+});
+document.querySelector("#request-access").addEventListener("click", () => {
+  const form = document.querySelector("#access-request-form"); form.reset();
+  document.querySelector("#access-request-error").textContent = "";
+  document.querySelector("#access-request-dialog").showModal();
+});
+document.querySelector("#access-request-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.target, error = document.querySelector("#access-request-error");
+  const requested_services = [...form.querySelectorAll("[name='services']:checked")].map(input => input.value);
+  error.textContent = "";
+  try {
+    await api("/api/v1/access-requests", {method:"POST", body:JSON.stringify({reason:form.elements.reason.value, requested_services})});
+    form.reset(); document.querySelector("#access-request-dialog").close(); toast("Access request submitted."); await loadMyAccess();
   } catch (failure) { error.textContent = failure.message; }
 });
 document.querySelector("#connection-form").addEventListener("submit", async event => {
@@ -572,6 +603,7 @@ async function handleDynamicClick(event) {
     const form = document.querySelector("#access-form");
     form.reset();
     form.elements.original_subject.value = item.subject;
+    form.elements.request_id.value = "";
     form.elements.subject.value = item.subject;
     form.elements.subject.disabled = true;
     form.elements.email.value = item.email || "";
@@ -588,6 +620,23 @@ async function handleDynamicClick(event) {
     form.querySelectorAll("[name='services']").forEach(input => { input.checked = item.services.includes(input.value); });
     document.querySelector("#access-dialog").showModal();
     return;
+  }
+  const requestReview = event.target.closest("[data-request-review]");
+  if (requestReview) {
+    const requestData = (await api("/api/v1/admin/access-requests")).items.find(item => item.id === requestReview.dataset.requestReview);
+    if (!requestData) return;
+    const form = document.querySelector("#access-form"); form.reset();
+    form.elements.original_subject.value = requestData.subject; form.elements.request_id.value = requestData.id;
+    form.elements.subject.value = requestData.subject; form.elements.subject.disabled = true;
+    form.elements.email.value = requestData.email || "";
+    form.querySelectorAll("[name='services']").forEach(input => { input.checked = requestData.requested_services.includes(input.value); });
+    document.querySelector("#access-dialog").showModal(); return;
+  }
+  const requestReject = event.target.closest("[data-request-reject]");
+  if (requestReject) {
+    const note = prompt("Why is this request being rejected?") || "";
+    await api(`/api/v1/admin/access-requests/${encodeURIComponent(requestReject.dataset.requestReject)}`, {method:"PATCH", body:JSON.stringify({status:"rejected", note})});
+    toast("Access request rejected."); await loadAccess(); return;
   }
   const accessDelete = event.target.closest("[data-access-delete]");
   if (accessDelete) {

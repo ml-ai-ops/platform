@@ -4,9 +4,86 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ml-ai-ops/platform/pkg/api"
 )
+
+func validateAccessRequest(req api.CreateAccessRequest) (api.CreateAccessRequest, error) {
+	req.Reason = strings.TrimSpace(req.Reason)
+	req.RequestedServices = unique(req.RequestedServices)
+	if len(req.Reason) < 10 {
+		return req, errors.New("reason must contain at least 10 characters")
+	}
+	if len(req.RequestedServices) == 0 {
+		return req, errors.New("at least one service is required")
+	}
+	for _, service := range req.RequestedServices {
+		if !slices.Contains(validServices, service) {
+			return req, errors.New("unknown service: " + service)
+		}
+	}
+	return req, nil
+}
+
+func (s *Store) AccessRequests() []api.AccessRequest {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return clone(s.data.AccessRequests)
+}
+
+func (s *Store) AccessRequestsFor(subject string) []api.AccessRequest {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]api.AccessRequest, 0)
+	for _, request := range s.data.AccessRequests {
+		if request.Subject == subject {
+			result = append(result, request)
+		}
+	}
+	return result
+}
+
+func (s *Store) CreateAccessRequest(subject, email string, req api.CreateAccessRequest) (api.AccessRequest, error) {
+	req, err := validateAccessRequest(req)
+	if err != nil {
+		return api.AccessRequest{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, request := range s.data.AccessRequests {
+		if request.Subject == subject && request.Status == "pending" {
+			return api.AccessRequest{}, errors.New("a pending access request already exists")
+		}
+	}
+	now := time.Now().UTC()
+	request := api.AccessRequest{ID: id("access-request"), Subject: subject, Email: email, Reason: req.Reason, RequestedServices: req.RequestedServices, Status: "pending", CreatedAt: now, UpdatedAt: now}
+	s.data.AccessRequests = append([]api.AccessRequest{request}, s.data.AccessRequests...)
+	s.record("access.requested", "access_request", request.ID, subject, nil)
+	return request, s.persist()
+}
+
+func (s *Store) ReviewAccessRequest(requestID string, req api.ReviewAccessRequest, reviewer string) (api.AccessRequest, error) {
+	if req.Status != "approved" && req.Status != "rejected" {
+		return api.AccessRequest{}, errors.New("status must be approved or rejected")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.AccessRequests {
+		if s.data.AccessRequests[i].ID == requestID {
+			if s.data.AccessRequests[i].Status != "pending" {
+				return api.AccessRequest{}, errors.New("access request has already been reviewed")
+			}
+			s.data.AccessRequests[i].Status = req.Status
+			s.data.AccessRequests[i].Reviewer = reviewer
+			s.data.AccessRequests[i].ReviewNote = strings.TrimSpace(req.Note)
+			s.data.AccessRequests[i].UpdatedAt = time.Now().UTC()
+			s.record("access.request_"+req.Status, "access_request", requestID, reviewer, nil)
+			return s.data.AccessRequests[i], s.persist()
+		}
+	}
+	return api.AccessRequest{}, ErrNotFound
+}
 
 var validServices = []string{
 	"overview", "projects", "pipelines", "models", "agents", "features",

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -107,5 +108,28 @@ func TestAdminCanProvisionAndRevokeUser(t *testing.T) {
 	server.ServeHTTP(remove, httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/new-user", nil))
 	if remove.Code != http.StatusNoContent {
 		t.Fatalf("revoke failed: %d %s", remove.Code, remove.Body.String())
+	}
+}
+
+func TestUserCanRequestAccessAndAdminCanReview(t *testing.T) {
+	server, _ := accessServer(t)
+	create := httptest.NewRecorder()
+	server.ServeHTTP(create, userRequest(http.MethodPost, "/api/v1/access-requests", `{"reason":"Need model registry for churn delivery","requested_services":["models","catalog"]}`))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("request access failed: %d %s", create.Code, create.Body.String())
+	}
+	var created api.AccessRequest
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	mine := httptest.NewRecorder()
+	server.ServeHTTP(mine, userRequest(http.MethodGet, "/api/v1/access-requests", ""))
+	if mine.Code != http.StatusOK || !strings.Contains(mine.Body.String(), created.ID) {
+		t.Fatalf("own requests missing: %d %s", mine.Code, mine.Body.String())
+	}
+	review := httptest.NewRecorder()
+	server.ServeHTTP(review, httptest.NewRequest(http.MethodPatch, "/api/v1/admin/access-requests/"+created.ID, strings.NewReader(`{"status":"approved","note":"Capacity confirmed"}`)))
+	if review.Code != http.StatusOK || !strings.Contains(review.Body.String(), `"status":"approved"`) {
+		t.Fatalf("review failed: %d %s", review.Code, review.Body.String())
 	}
 }

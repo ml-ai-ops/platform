@@ -21,6 +21,10 @@ document remains available at `GET /api/openapi.json`. Every request is authoriz
 | `GET` | `/api/v1/admin/users` | admin/operator | List provisioned users |
 | `PUT` | `/api/v1/admin/users/{subject}` | admin/operator | Assign role, services, projects, storage, and compute quotas |
 | `DELETE` | `/api/v1/admin/users/{subject}` | admin/operator | Revoke all access |
+| `GET` | `/api/v1/access-requests` | authenticated user | List the caller's access requests |
+| `POST` | `/api/v1/access-requests` | authenticated user | Request one or more platform services |
+| `GET` | `/api/v1/admin/access-requests` | admin/operator | List the organization approval queue |
+| `PATCH` | `/api/v1/admin/access-requests/{id}` | admin/operator | Approve or reject an access request |
 | `GET` | `/api/v1/dashboard` | viewer+ | Workspace summary (counts + recent runs) |
 | `GET` | `/api/v1/onboarding/readiness` | viewer+ | Onboarding readiness score |
 | `GET` | `/api/openapi.json` | public | OpenAPI document |
