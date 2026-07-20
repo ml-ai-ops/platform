@@ -60,9 +60,47 @@ type NexusAgentList struct {
 }
 
 func AddToScheme(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(GroupVersion, &NexusAgent{}, &NexusAgentList{}, &NexusPipelineRun{}, &NexusPipelineRunList{}, &NexusModelPromotion{}, &NexusModelPromotionList{})
+	scheme.AddKnownTypes(GroupVersion, &NexusAgent{}, &NexusAgentList{}, &NexusPipelineRun{}, &NexusPipelineRunList{}, &NexusModelPromotion{}, &NexusModelPromotionList{}, &NexusWorkspace{}, &NexusWorkspaceList{})
 	metav1.AddToGroupVersion(scheme, GroupVersion)
 	return nil
+}
+
+type WorkspaceComputeSpec struct {
+	VCPUs    int32  `json:"vcpus"`
+	MemoryGB int32  `json:"memoryGB"`
+	GPUs     int32  `json:"gpus,omitempty"`
+	GPUType  string `json:"gpuType,omitempty"`
+	MaxVMs   int32  `json:"maxVMs,omitempty"`
+}
+
+type NexusWorkspaceSpec struct {
+	Subject   string               `json:"subject"`
+	Services  []string             `json:"services,omitempty"`
+	Compute   WorkspaceComputeSpec `json:"compute"`
+	StorageGB int32                `json:"storageGB"`
+	Disabled  bool                 `json:"disabled,omitempty"`
+}
+
+type NexusWorkspaceStatus struct {
+	Phase              string             `json:"phase,omitempty"`
+	ReadyReplicas      int32              `json:"readyReplicas,omitempty"`
+	WorkbenchURL       string             `json:"workbenchURL,omitempty"`
+	IDEURL             string             `json:"ideURL,omitempty"`
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+}
+
+type NexusWorkspace struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              NexusWorkspaceSpec   `json:"spec,omitempty"`
+	Status            NexusWorkspaceStatus `json:"status,omitempty"`
+}
+
+type NexusWorkspaceList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []NexusWorkspace `json:"items"`
 }
 
 type NexusPipelineRunSpec struct {
@@ -201,6 +239,31 @@ func (in *NexusModelPromotionList) DeepCopyObject() runtime.Object {
 	out.Items = make([]NexusModelPromotion, len(in.Items))
 	for i := range in.Items {
 		out.Items[i] = *(in.Items[i].DeepCopyObject().(*NexusModelPromotion))
+	}
+	return out
+}
+
+func (in *NexusWorkspace) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := new(NexusWorkspace)
+	*out = *in
+	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	out.Spec.Services = append([]string(nil), in.Spec.Services...)
+	out.Status.Conditions = append([]metav1.Condition(nil), in.Status.Conditions...)
+	return out
+}
+
+func (in *NexusWorkspaceList) DeepCopyObject() runtime.Object {
+	if in == nil {
+		return nil
+	}
+	out := new(NexusWorkspaceList)
+	*out = *in
+	out.Items = make([]NexusWorkspace, len(in.Items))
+	for i := range in.Items {
+		out.Items[i] = *(in.Items[i].DeepCopyObject().(*NexusWorkspace))
 	}
 	return out
 }

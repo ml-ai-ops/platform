@@ -27,7 +27,7 @@ func main() {
 	}
 	namespace := env("MLAIOPS_TARGET_NAMESPACE", "default")
 	consumer := integrations.NewKafkaConsumer(env("KAFKA_REST_URL", "http://kafka-rest:8082"), "mlaiops-integration", env("HOSTNAME", "worker"))
-	topics := []string{"mlaiops.pipeline.commands", "mlaiops.model.commands", "mlaiops.agent.commands", "mlaiops.tool.commands", "mlaiops.connection.commands"}
+	topics := []string{"mlaiops.pipeline.commands", "mlaiops.model.commands", "mlaiops.agent.commands", "mlaiops.tool.commands", "mlaiops.connection.commands", "mlaiops.workspace.commands"}
 	if err := consumer.Connect(ctx, topics); err != nil {
 		log.Fatal(err)
 	}

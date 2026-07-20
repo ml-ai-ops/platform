@@ -29,7 +29,10 @@ if [ -n "${S3_ENDPOINT:-}" ] && [ -e /dev/fuse ]; then
   chown dev:dev "$mount_root"
 else
   echo "Object-store filesystem mount requires S3_ENDPOINT and /dev/fuse" >&2
-  exit 1
+  if [ "${S3_MOUNT_OPTIONAL:-false}" != "true" ]; then
+    exit 1
+  fi
+  echo "Continuing with the persistent /workspace volume; object storage remains available through the platform API." >&2
 fi
 
 # Seed the quickstart once; everything under /workspace persists in the

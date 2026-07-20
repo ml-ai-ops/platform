@@ -2,9 +2,13 @@ package integrations
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -67,6 +71,16 @@ func (d *Dispatcher) Dispatch(ctx context.Context, record KafkaRecord) error {
 	case "connection":
 		plural, kind = "nexusconnections", "NexusConnection"
 		spec = map[string]any{"type": resource["type"], "endpoint": resource["endpoint"], "secretRef": map[string]any{"name": resource["secret_ref"]}}
+	case "user_access":
+		plural, kind = "nexusworkspaces", "NexusWorkspace"
+		name = "workspace-" + command.ID
+		compute, _ := resource["compute"].(map[string]any)
+		storage, _ := resource["storage"].(map[string]any)
+		spec = map[string]any{
+			"subject": resource["subject"], "services": resource["services"], "disabled": resource["disabled"],
+			"compute":   map[string]any{"vcpus": integer(compute["vcpus"]), "memoryGB": integer(compute["memory_gb"]), "gpus": integer(compute["gpus"]), "gpuType": compute["gpu_type"], "maxVMs": integer(compute["max_vms"])},
+			"storageGB": integer(storage["size_gb"]),
+		}
 	default:
 		return fmt.Errorf("unsupported lifecycle kind %q", command.Kind)
 	}
@@ -76,7 +90,24 @@ func (d *Dispatcher) Dispatch(ctx context.Context, record KafkaRecord) error {
 		"spec":     spec,
 	}}
 	gvr := schema.GroupVersionResource{Group: "mlaiops.io", Version: "v1alpha1", Resource: plural}
-	_, err := d.client.Resource(gvr).Namespace(d.namespace).Create(ctx, object, metav1.CreateOptions{})
+	resources := d.client.Resource(gvr).Namespace(d.namespace)
+	if command.Kind == "user_access" && command.Action == "access.deleted" {
+		err := resources.Delete(ctx, object.GetName(), metav1.DeleteOptions{})
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	existing, err := resources.Get(ctx, object.GetName(), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = resources.Create(ctx, object, metav1.CreateOptions{})
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	object.SetResourceVersion(existing.GetResourceVersion())
+	_, err = resources.Update(ctx, object, metav1.UpdateOptions{})
 	return err
 }
 
@@ -89,9 +120,31 @@ func toolRefs(value any) []any {
 	return result
 }
 
+func integer(value any) int64 {
+	switch number := value.(type) {
+	case float64:
+		return int64(number)
+	case int64:
+		return number
+	case int:
+		return int64(number)
+	default:
+		return 0
+	}
+}
+
 func dnsName(name, fallback string) string {
 	if name == "" {
-		return fallback
+		name = fallback
 	}
-	return name
+	raw := strings.ToLower(name)
+	value := strings.Trim(regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(raw, "-"), "-")
+	if value == "" {
+		value = "resource"
+	}
+	if len(value) <= 63 {
+		return value
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(raw)))[:8]
+	return strings.Trim(value[:54], "-") + "-" + digest
 }

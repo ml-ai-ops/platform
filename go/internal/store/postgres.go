@@ -255,7 +255,12 @@ func (p *Postgres) UpsertUserAccess(subject string, req api.UpsertUserAccessRequ
 
 func (p *Postgres) DeleteUserAccess(subject, actor string) error {
 	ctx := context.Background()
-	tag, err := p.pool.Exec(ctx, `DELETE FROM platform_resources WHERE tenant_id=$1 AND kind='user_access' AND id=$2`, p.tenant, subject)
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `DELETE FROM platform_resources WHERE tenant_id=$1 AND kind='user_access' AND id=$2`, p.tenant, subject)
 	if err != nil {
 		return err
 	}
@@ -263,9 +268,20 @@ func (p *Postgres) DeleteUserAccess(subject, actor string) error {
 		return ErrNotFound
 	}
 	event := api.AuditEvent{ID: id("evt"), Action: "access.deleted", Resource: "user_access", ResourceID: subject, Actor: actorOrAnonymous(actor), CreatedAt: time.Now().UTC()}
-	_, err = p.pool.Exec(ctx, `INSERT INTO audit_events (tenant_id,id,action,resource,resource_id,actor,metadata,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+	_, err = tx.Exec(ctx, `INSERT INTO audit_events (tenant_id,id,action,resource,resource_id,actor,metadata,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		p.tenant, event.ID, event.Action, event.Resource, event.ResourceID, event.Actor, event.Metadata, event.CreatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	commandPayload, _ := json.Marshal(map[string]any{
+		"id": subject, "kind": "user_access", "action": event.Action,
+		"resource": map[string]any{"subject": subject}, "actor": event.Actor, "tenant": p.tenant, "occurred_at": event.CreatedAt,
+	})
+	if _, err = tx.Exec(ctx, `INSERT INTO outbox_events (tenant_id,id,topic,event_key,payload) VALUES ($1,$2,$3,$4,$5)`,
+		p.tenant, id("out"), "mlaiops.workspace.commands", subject, commandPayload); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (p *Postgres) Audit() []api.AuditEvent {
@@ -733,6 +749,8 @@ func topicForAction(action string) string {
 		return "mlaiops.tool.commands"
 	case strings.HasPrefix(action, "connection."):
 		return "mlaiops.connection.commands"
+	case strings.HasPrefix(action, "access."):
+		return "mlaiops.workspace.commands"
 	default:
 		return ""
 	}

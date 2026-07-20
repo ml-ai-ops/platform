@@ -38,6 +38,11 @@ func main() {
 	})
 	must(err)
 	must((&platformoperator.AgentReconciler{Client: manager.GetClient()}).SetupWithManager(manager))
+	must((&platformoperator.WorkspaceReconciler{
+		Client: manager.GetClient(), WorkbenchImage: env("WORKBENCH_IMAGE", "ghcr.io/ml-ai-ops/jupyter:latest"),
+		IDEImage: env("IDE_IMAGE", "ghcr.io/ml-ai-ops/ide:latest"), GatewayURL: env("MLAIOPS_URL", "http://mlaiops-gateway.mlaiops-system:8080"),
+		StorageClass: os.Getenv("WORKSPACE_STORAGE_CLASS"),
+	}).SetupWithManager(manager))
 	must((&platformoperator.PipelineReconciler{
 		Client: manager.GetClient(), KFP: integrations.NewKFP(os.Getenv("KFP_URL"), os.Getenv("KFP_TOKEN")),
 		ExperimentID: os.Getenv("KFP_EXPERIMENT_ID"),
@@ -55,4 +60,11 @@ func must(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

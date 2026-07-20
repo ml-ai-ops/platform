@@ -9,6 +9,7 @@ func TestLifecycleActionsRouteToDedicatedTopics(t *testing.T) {
 		"agent.deployed":     "mlaiops.agent.commands",
 		"tool.registered":    "mlaiops.tool.commands",
 		"connection.created": "mlaiops.connection.commands",
+		"access.upserted":    "mlaiops.workspace.commands",
 		"project.created":    "",
 	}
 	for action, expected := range cases {
