@@ -20,7 +20,15 @@ type Repository interface {
 	UpsertBlogPost(string, api.UpsertBlogPostRequest, string) (api.BlogPost, error)
 	DeleteBlogPost(string, string) error
 	Projects() []api.Project
+	Project(string) (api.Project, error)
+	SetProjectRepository(string, api.SetProjectRepositoryRequest, string) (api.Project, error)
 	Runs() []api.PipelineRun
+	PipelineDefinitions() []api.PipelineDefinition
+	PipelineDefinition(string) (api.PipelineDefinition, error)
+	UpsertPipelineDefinition(string, api.UpsertPipelineDefinitionRequest, string) (api.PipelineDefinition, error)
+	Functions() []api.Function
+	UpsertFunction(api.DeployFunctionRequest, string, string) (api.Function, error)
+	DeleteFunction(string, string) error
 	Models() []api.Model
 	Agents() []api.Agent
 	Tools() []api.Tool

@@ -71,8 +71,12 @@ func (p *Postgres) Migrate(ctx context.Context) error {
 	return err
 }
 
-func (p *Postgres) Projects() []api.Project       { return list[api.Project](p, "project") }
-func (p *Postgres) Runs() []api.PipelineRun       { return list[api.PipelineRun](p, "pipeline_run") }
+func (p *Postgres) Projects() []api.Project { return list[api.Project](p, "project") }
+func (p *Postgres) Runs() []api.PipelineRun { return list[api.PipelineRun](p, "pipeline_run") }
+func (p *Postgres) PipelineDefinitions() []api.PipelineDefinition {
+	return list[api.PipelineDefinition](p, "pipeline_definition")
+}
+func (p *Postgres) Functions() []api.Function     { return list[api.Function](p, "function") }
 func (p *Postgres) Models() []api.Model           { return list[api.Model](p, "model") }
 func (p *Postgres) Agents() []api.Agent           { return list[api.Agent](p, "agent") }
 func (p *Postgres) Tools() []api.Tool             { return list[api.Tool](p, "tool") }
@@ -293,6 +297,13 @@ func (p *Postgres) CreateProject(req api.CreateProjectRequest, actors ...string)
 		}
 	}
 	project := api.Project{ID: id("prj"), Name: strings.TrimSpace(req.Name), Description: strings.TrimSpace(req.Description), Template: req.Template, Namespace: slug(req.Name), Status: "ready", CreatedAt: time.Now().UTC(), OwnerSubject: req.OwnerSubject}
+	if strings.TrimSpace(req.RepositoryURL) != "" {
+		repository, err := validateGitRepository(api.SetProjectRepositoryRequest{URL: req.RepositoryURL, DefaultBranch: req.DefaultBranch})
+		if err != nil {
+			return api.Project{}, err
+		}
+		project.Repository = &repository
+	}
 	return project, p.write("project", project.ID, project, "project.created", first(actors), nil)
 }
 
@@ -300,11 +311,22 @@ func (p *Postgres) SubmitPipeline(req api.SubmitPipelineRequest, actors ...strin
 	if !p.exists("project", req.ProjectID) {
 		return api.PipelineRun{}, ErrNotFound
 	}
+	steps, mode := defaultSteps("pending"), "prefect"
+	if req.DefinitionID != "" {
+		definition, err := p.PipelineDefinition(req.DefinitionID)
+		if err != nil || definition.ProjectID != req.ProjectID {
+			return api.PipelineRun{}, ErrNotFound
+		}
+		steps, mode = stepsFromDefinition(definition), definition.ExecutionMode
+		if strings.TrimSpace(req.Name) == "" {
+			req.Name = definition.Name
+		}
+	}
 	if strings.TrimSpace(req.Name) == "" {
 		req.Name = "training-pipeline"
 	}
 	now := time.Now().UTC()
-	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: req.Name, Status: "queued", CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Run accepted by control plane"}}}
+	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: req.Name, Status: "queued", CreatedAt: now, UpdatedAt: now, DefinitionID: req.DefinitionID, ExecutionMode: mode, Parameters: req.Parameters, Steps: steps, Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Run accepted by control plane"}}}
 	return run, p.write("pipeline_run", run.ID, run, "pipeline.submitted", first(actors), nil)
 }
 
@@ -329,7 +351,7 @@ func (p *Postgres) RetryRun(runID, actor string) (api.PipelineRun, error) {
 		return api.PipelineRun{}, err
 	}
 	now := time.Now().UTC()
-	run := api.PipelineRun{ID: id("run"), ProjectID: previous.ProjectID, Name: previous.Name, ParentRunID: previous.ID, Status: "queued", CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Retry created from " + previous.ID}}}
+	run := api.PipelineRun{ID: id("run"), ProjectID: previous.ProjectID, Name: previous.Name, ParentRunID: previous.ID, Status: "queued", CreatedAt: now, UpdatedAt: now, DefinitionID: previous.DefinitionID, ExecutionMode: previous.ExecutionMode, Parameters: previous.Parameters, Steps: resetSteps(previous.Steps), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Retry created from " + previous.ID}}}
 	return run, p.write("pipeline_run", run.ID, run, "pipeline.retried", actor, map[string]any{"parent_run_id": previous.ID})
 }
 

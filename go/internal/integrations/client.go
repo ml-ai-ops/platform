@@ -148,6 +148,8 @@ type Function struct {
 	EnvVars     map[string]string `json:"envVars,omitempty"`
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
+	Limits      map[string]string `json:"limits,omitempty"`
+	Requests    map[string]string `json:"requests,omitempty"`
 }
 
 func (o OpenFaaS) request(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
@@ -191,11 +193,27 @@ func (o OpenFaaS) DeployFunction(ctx context.Context, function Function) error {
 		"envVars":     function.EnvVars,
 		"labels":      function.Labels,
 		"annotations": function.Annotations,
+		"limits":      function.Limits,
+		"requests":    function.Requests,
 	})
 	if err != nil {
 		return err
 	}
 	response, err := o.request(ctx, http.MethodPut, "/system/functions", bytes.NewReader(raw))
+	_, err = o.checked(response, err)
+	return err
+}
+
+// DeleteFunction removes a deployed function through the OpenFaaS provider.
+func (o OpenFaaS) DeleteFunction(ctx context.Context, name string) error {
+	if name == "" {
+		return errors.New("function name is required")
+	}
+	raw, err := json.Marshal(map[string]string{"functionName": name})
+	if err != nil {
+		return err
+	}
+	response, err := o.request(ctx, http.MethodDelete, "/system/functions", bytes.NewReader(raw))
 	_, err = o.checked(response, err)
 	return err
 }

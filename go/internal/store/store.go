@@ -17,20 +17,22 @@ var ErrNotFound = errors.New("resource not found")
 var ErrConflict = errors.New("resource already exists")
 
 type state struct {
-	UserAccess     []api.UserAccess    `json:"user_access"`
-	AccessRequests []api.AccessRequest `json:"access_requests"`
-	APITokens      []api.APIToken      `json:"api_tokens"`
-	BlogPosts      []api.BlogPost      `json:"blog_posts"`
-	Projects       []api.Project       `json:"projects"`
-	Runs           []api.PipelineRun   `json:"runs"`
-	Models         []api.Model         `json:"models"`
-	Agents         []api.Agent         `json:"agents"`
-	Tools          []api.Tool          `json:"tools"`
-	Connections    []api.Connection    `json:"connections"`
-	Audit          []api.AuditEvent    `json:"audit"`
-	Sessions       []api.AgentSession  `json:"sessions"`
-	Traces         []api.AgentTrace    `json:"traces"`
-	Features       []api.FeatureView   `json:"features"`
+	UserAccess     []api.UserAccess         `json:"user_access"`
+	AccessRequests []api.AccessRequest      `json:"access_requests"`
+	APITokens      []api.APIToken           `json:"api_tokens"`
+	BlogPosts      []api.BlogPost           `json:"blog_posts"`
+	Projects       []api.Project            `json:"projects"`
+	Runs           []api.PipelineRun        `json:"runs"`
+	Definitions    []api.PipelineDefinition `json:"pipeline_definitions"`
+	Functions      []api.Function           `json:"functions"`
+	Models         []api.Model              `json:"models"`
+	Agents         []api.Agent              `json:"agents"`
+	Tools          []api.Tool               `json:"tools"`
+	Connections    []api.Connection         `json:"connections"`
+	Audit          []api.AuditEvent         `json:"audit"`
+	Sessions       []api.AgentSession       `json:"sessions"`
+	Traces         []api.AgentTrace         `json:"traces"`
+	Features       []api.FeatureView        `json:"features"`
 }
 
 func (s *Store) UserAccess() []api.UserAccess {
@@ -114,6 +116,16 @@ func (s *Store) Projects() []api.Project {
 	defer s.mu.RUnlock()
 	return clone(s.data.Projects)
 }
+func (s *Store) PipelineDefinitions() []api.PipelineDefinition {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return clone(s.data.Definitions)
+}
+func (s *Store) Functions() []api.Function {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return clone(s.data.Functions)
+}
 func (s *Store) Runs() []api.PipelineRun {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -149,6 +161,13 @@ func (s *Store) CreateProject(req api.CreateProjectRequest, actor ...string) (ap
 		}
 	}
 	p := api.Project{ID: id("prj"), Name: name, Description: strings.TrimSpace(req.Description), Template: req.Template, Namespace: slug(name), Status: "ready", CreatedAt: time.Now().UTC(), OwnerSubject: req.OwnerSubject}
+	if strings.TrimSpace(req.RepositoryURL) != "" {
+		repository, err := validateGitRepository(api.SetProjectRepositoryRequest{URL: req.RepositoryURL, DefaultBranch: req.DefaultBranch})
+		if err != nil {
+			return api.Project{}, err
+		}
+		p.Repository = &repository
+	}
 	s.data.Projects = append([]api.Project{p}, s.data.Projects...)
 	s.record("project.created", "project", p.ID, first(actor), nil)
 	return p, s.persist()
@@ -160,11 +179,22 @@ func (s *Store) SubmitPipeline(req api.SubmitPipelineRequest, actor ...string) (
 	if !hasProject(s.data.Projects, req.ProjectID) {
 		return api.PipelineRun{}, ErrNotFound
 	}
+	steps, mode := defaultSteps("pending"), "prefect"
+	if req.DefinitionID != "" {
+		definition, err := pipelineDefinitionFrom(s.data.Definitions, req.DefinitionID)
+		if err != nil || definition.ProjectID != req.ProjectID {
+			return api.PipelineRun{}, ErrNotFound
+		}
+		steps, mode = stepsFromDefinition(definition), definition.ExecutionMode
+		if strings.TrimSpace(req.Name) == "" {
+			req.Name = definition.Name
+		}
+	}
 	if strings.TrimSpace(req.Name) == "" {
 		req.Name = "training-pipeline"
 	}
 	now := time.Now().UTC()
-	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: strings.TrimSpace(req.Name), Status: "queued", Progress: 0, CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Run accepted by control plane"}}}
+	run := api.PipelineRun{ID: id("run"), ProjectID: req.ProjectID, Name: strings.TrimSpace(req.Name), Status: "queued", Progress: 0, CreatedAt: now, UpdatedAt: now, DefinitionID: req.DefinitionID, ExecutionMode: mode, Parameters: req.Parameters, Steps: steps, Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Run accepted by control plane"}}}
 	s.data.Runs = append([]api.PipelineRun{run}, s.data.Runs...)
 	s.record("pipeline.submitted", "pipeline_run", run.ID, first(actor), nil)
 	return run, s.persist()
@@ -204,7 +234,8 @@ func (s *Store) RetryRun(runID, actor string) (api.PipelineRun, error) {
 	for _, previous := range s.data.Runs {
 		if previous.ID == runID {
 			now := time.Now().UTC()
-			run := api.PipelineRun{ID: id("run"), ProjectID: previous.ProjectID, Name: previous.Name, ParentRunID: previous.ID, Status: "queued", CreatedAt: now, UpdatedAt: now, Steps: defaultSteps("pending"), Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Retry created from " + previous.ID}}}
+			steps := resetSteps(previous.Steps)
+			run := api.PipelineRun{ID: id("run"), ProjectID: previous.ProjectID, Name: previous.Name, ParentRunID: previous.ID, Status: "queued", CreatedAt: now, UpdatedAt: now, DefinitionID: previous.DefinitionID, ExecutionMode: previous.ExecutionMode, Parameters: previous.Parameters, Steps: steps, Logs: []api.RunLog{{Timestamp: now, Level: "info", Message: "Retry created from " + previous.ID}}}
 			s.data.Runs = append([]api.PipelineRun{run}, s.data.Runs...)
 			s.record("pipeline.retried", "pipeline_run", run.ID, actor, map[string]any{"parent_run_id": previous.ID})
 			return run, s.persist()

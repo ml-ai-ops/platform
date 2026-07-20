@@ -87,6 +87,32 @@ func filterRuns(items []api.PipelineRun, allowed map[string]bool) []api.Pipeline
 	return result
 }
 
+func filterPipelineDefinitions(items []api.PipelineDefinition, allowed map[string]bool) []api.PipelineDefinition {
+	if allowed == nil {
+		return items
+	}
+	result := make([]api.PipelineDefinition, 0)
+	for _, item := range items {
+		if allowed[item.ProjectID] {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func filterFunctions(items []api.Function, allowed map[string]bool) []api.Function {
+	if allowed == nil {
+		return items
+	}
+	result := make([]api.Function, 0)
+	for _, item := range items {
+		if allowed[item.ProjectID] {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 func filterModels(items []api.Model, allowed map[string]bool) []api.Model {
 	if allowed == nil {
 		return items
@@ -179,6 +205,35 @@ func enforceRunQuota(repository store.Repository, value auth.Principal) error {
 		return fmt.Errorf("concurrent run quota reached (%d)", access.Compute.MaxRuns)
 	}
 	return nil
+}
+
+func enforceFunctionQuota(repository store.Repository, value auth.Principal) error {
+	if privileged(value) || !slices.Contains(value.Roles, auth.RoleUser) {
+		return nil
+	}
+	access, err := repository.AccessFor(value.Subject)
+	if err != nil || access.Compute.MaxFunctions == 0 {
+		return errors.New("no function capacity has been provisioned")
+	}
+	count := 0
+	for _, function := range repository.Functions() {
+		if function.OwnerSubject == value.Subject {
+			count++
+		}
+	}
+	if count >= access.Compute.MaxFunctions {
+		return fmt.Errorf("function quota reached (%d)", access.Compute.MaxFunctions)
+	}
+	return nil
+}
+
+func functionAllowed(repository store.Repository, value auth.Principal, name string) bool {
+	for _, function := range repository.Functions() {
+		if function.Name == name {
+			return projectAllowed(repository, value, function.ProjectID)
+		}
+	}
+	return privileged(value)
 }
 
 func storageAllowed(repository store.Repository, value auth.Principal, bucket string) bool {

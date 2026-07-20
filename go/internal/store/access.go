@@ -87,7 +87,40 @@ func (s *Store) ReviewAccessRequest(requestID string, req api.ReviewAccessReques
 
 var validServices = []string{
 	"overview", "projects", "pipelines", "models", "agents", "features",
-	"storage", "realtime", "catalog", "platform", "workbench", "ide",
+	"storage", "realtime", "catalog", "platform", "functions", "git", "workbench", "ide",
+}
+
+// ResourceProfiles is the canonical sizing catalog used by both API
+// validation and the admin console. Non-custom profiles are intentionally
+// opinionated and replace individual limits to prevent ambiguous partial
+// presets.
+func ResourceProfiles() []api.ResourceProfile {
+	return []api.ResourceProfile{
+		{Name: "starter", Label: "Starter", Description: "Notebook exploration and small development runs", Compute: api.ComputeGrant{Profile: "starter", VCPUs: 2, MemoryGB: 4, MaxVMs: 1, MaxProjects: 2, MaxRuns: 1, MaxFunctions: 3}, StorageGB: 25},
+		{Name: "team", Label: "Team", Description: "Daily model development and shared pipelines", Compute: api.ComputeGrant{Profile: "team", VCPUs: 4, MemoryGB: 8, MaxVMs: 2, MaxProjects: 5, MaxRuns: 3, MaxFunctions: 10}, StorageGB: 100},
+		{Name: "power", Label: "Power", Description: "Large training runs and production delivery", Compute: api.ComputeGrant{Profile: "power", VCPUs: 8, MemoryGB: 16, MaxVMs: 4, MaxProjects: 10, MaxRuns: 6, MaxFunctions: 25}, StorageGB: 250},
+		{Name: "gpu", Label: "GPU", Description: "Accelerated model and generative AI development", Compute: api.ComputeGrant{Profile: "gpu", VCPUs: 8, MemoryGB: 32, GPUs: 1, GPUType: "nvidia.com/gpu", MaxVMs: 2, MaxProjects: 10, MaxRuns: 4, MaxFunctions: 15}, StorageGB: 500},
+		{Name: "custom", Label: "Custom", Description: "Set each resource boundary explicitly", Compute: api.ComputeGrant{Profile: "custom"}},
+	}
+}
+
+func applyResourceProfile(req *api.UpsertUserAccessRequest) error {
+	profile := strings.TrimSpace(req.Compute.Profile)
+	if profile == "" {
+		profile = "custom"
+		req.Compute.Profile = profile
+	}
+	for _, candidate := range ResourceProfiles() {
+		if candidate.Name != profile {
+			continue
+		}
+		if profile != "custom" {
+			req.Compute = candidate.Compute
+			req.Storage.SizeGB = candidate.StorageGB
+		}
+		return nil
+	}
+	return errors.New("unknown resource profile: " + profile)
 }
 
 func validateAccess(subject string, req api.UpsertUserAccessRequest) (api.UserAccess, error) {
@@ -109,8 +142,12 @@ func validateAccess(subject string, req api.UpsertUserAccessRequest) (api.UserAc
 			return api.UserAccess{}, errors.New("unknown service: " + service)
 		}
 	}
+	if err := applyResourceProfile(&req); err != nil {
+		return api.UserAccess{}, err
+	}
 	if req.Storage.SizeGB < 0 || req.Compute.VCPUs < 0 || req.Compute.MemoryGB < 0 ||
-		req.Compute.MaxVMs < 0 || req.Compute.MaxProjects < 0 || req.Compute.MaxRuns < 0 {
+		req.Compute.GPUs < 0 || req.Compute.MaxVMs < 0 || req.Compute.MaxProjects < 0 ||
+		req.Compute.MaxRuns < 0 || req.Compute.MaxFunctions < 0 {
 		return api.UserAccess{}, errors.New("resource limits cannot be negative")
 	}
 	return api.UserAccess{

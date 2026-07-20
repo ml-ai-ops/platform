@@ -412,7 +412,7 @@ func serviceForPath(path string) string {
 	case strings.HasPrefix(path, "/api/v1/components"), strings.HasPrefix(path, "/api/v1/connections"):
 		return "platform"
 	case strings.HasPrefix(path, "/api/v1/functions"):
-		return "models"
+		return "functions"
 	}
 	return ""
 }

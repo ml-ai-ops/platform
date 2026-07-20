@@ -38,6 +38,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/health", server.health)
 	mux.HandleFunc("GET /api/v1/me", server.me)
 	mux.HandleFunc("GET /api/v1/admin/users", server.userAccess)
+	mux.HandleFunc("GET /api/v1/admin/resource-profiles", server.resourceProfiles)
 	mux.HandleFunc("PUT /api/v1/admin/users/{subject}", server.upsertUserAccess)
 	mux.HandleFunc("DELETE /api/v1/admin/users/{subject}", server.deleteUserAccess)
 	mux.HandleFunc("GET /api/v1/access-requests", server.myAccessRequests)
@@ -57,6 +58,12 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/v1/onboarding/readiness", server.readiness)
 	mux.HandleFunc("GET /api/v1/projects", server.projects)
 	mux.HandleFunc("POST /api/v1/projects", server.createProject)
+	mux.HandleFunc("GET /api/v1/projects/{id}", server.project)
+	mux.HandleFunc("PUT /api/v1/projects/{id}/repository", server.setProjectRepository)
+	mux.HandleFunc("GET /api/v1/pipelines/definitions", server.pipelineDefinitions)
+	mux.HandleFunc("POST /api/v1/pipelines/definitions", server.upsertPipelineDefinition)
+	mux.HandleFunc("GET /api/v1/pipelines/definitions/{id}", server.pipelineDefinition)
+	mux.HandleFunc("PUT /api/v1/pipelines/definitions/{id}", server.upsertPipelineDefinition)
 	mux.HandleFunc("GET /api/v1/pipelines/runs", server.runs)
 	mux.HandleFunc("POST /api/v1/pipelines/submit", server.submitPipeline)
 	mux.HandleFunc("GET /api/v1/pipelines/runs/{id}", server.run)
@@ -77,6 +84,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/v1/realtime/{demo}", server.reportRealtime)
 	mux.HandleFunc("GET /api/v1/functions", server.functions)
 	mux.HandleFunc("POST /api/v1/functions", server.deployFunction)
+	mux.HandleFunc("DELETE /api/v1/functions/{name}", server.deleteFunction)
 	mux.HandleFunc("POST /api/v1/functions/{name}/invoke", server.invokeFunction)
 	mux.HandleFunc("GET /api/v1/models", server.models)
 	mux.HandleFunc("POST /api/v1/models", server.registerModel)
@@ -137,6 +145,11 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) userAccess(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.store.UserAccess()})
+}
+
+func (s *Server) resourceProfiles(w http.ResponseWriter, _ *http.Request) {
+	profiles := store.ResourceProfiles()
+	writeJSON(w, http.StatusOK, map[string]any{"items": profiles, "total": len(profiles)})
 }
 
 func (s *Server) upsertUserAccess(w http.ResponseWriter, r *http.Request) {
@@ -370,6 +383,72 @@ func (s *Server) projects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, filterProjects(s.store.Projects(), principal(r)))
 }
 
+func (s *Server) project(w http.ResponseWriter, r *http.Request) {
+	item, err := s.store.Project(r.PathValue("id"))
+	if err == nil && !projectAllowed(s.store, principal(r), item.ID) {
+		err = store.ErrNotFound
+	}
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+func (s *Server) setProjectRepository(w http.ResponseWriter, r *http.Request) {
+	projectID := r.PathValue("id")
+	if !projectAllowed(s.store, principal(r), projectID) {
+		writeError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	var req api.SetProjectRepositoryRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	item, err := s.store.SetProjectRepository(projectID, req, actor(r))
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+func (s *Server) pipelineDefinitions(w http.ResponseWriter, r *http.Request) {
+	items := filterPipelineDefinitions(s.store.PipelineDefinitions(), allowedProjectIDs(s.store, principal(r)))
+	writeJSON(w, http.StatusOK, api.Page[api.PipelineDefinition]{Items: items, Total: len(items)})
+}
+
+func (s *Server) pipelineDefinition(w http.ResponseWriter, r *http.Request) {
+	item, err := s.store.PipelineDefinition(r.PathValue("id"))
+	if err == nil && !projectAllowed(s.store, principal(r), item.ProjectID) {
+		err = store.ErrNotFound
+	}
+	writeMutation(w, item, err, http.StatusOK)
+}
+
+func (s *Server) upsertPipelineDefinition(w http.ResponseWriter, r *http.Request) {
+	var req api.UpsertPipelineDefinitionRequest
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if !projectAllowed(s.store, principal(r), req.ProjectID) {
+		writeError(w, http.StatusForbidden, "access_denied", "project is not assigned to this user")
+		return
+	}
+	registered := map[string]bool{}
+	for _, function := range s.store.Functions() {
+		if function.ProjectID == req.ProjectID {
+			registered[function.Name] = true
+		}
+	}
+	for _, job := range req.Jobs {
+		if job.Kind == "function" && !registered[job.Function] {
+			writeError(w, http.StatusUnprocessableEntity, "validation_error", "function job references an undeployed project function: "+job.Function)
+			return
+		}
+	}
+	item, err := s.store.UpsertPipelineDefinition(r.PathValue("id"), req, actor(r))
+	status := http.StatusCreated
+	if r.PathValue("id") != "" {
+		status = http.StatusOK
+	}
+	writeMutation(w, item, err, status)
+}
+
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	if err := enforceProjectQuota(s.store, principal(r)); err != nil {
 		writeError(w, http.StatusForbidden, "quota_exceeded", err.Error())
@@ -437,6 +516,9 @@ func (s *Server) retryRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item, err := s.store.RetryRun(r.PathValue("id"), actor(r))
+	if err == nil {
+		item = s.dispatchPipeline(r.Context(), item)
+	}
 	writeMutation(w, item, err, http.StatusAccepted)
 }
 
@@ -463,21 +545,7 @@ func (s *Server) submitPipeline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, "pipeline_submission_failed", err.Error())
 		return
 	}
-	// With an execution engine configured, the run is real: create the Prefect
-	// flow run carrying our run id so the flow reports steps back. Fail closed
-	// (run marked failed) when the engine rejects the submission.
-	if prefectURL := os.Getenv("PREFECT_API_URL"); prefectURL != "" {
-		prefect := integrations.NewPrefect(prefectURL, "")
-		engineID, submitErr := prefect.CreateFlowRun(r.Context(), run.Name, "mlaiops", run.ID, map[string]any{"run_id": run.ID, "project_id": run.ProjectID})
-		if submitErr != nil {
-			run, _ = s.store.UpdateRunStep(run.ID, api.UpdateRunStepRequest{Step: "submit-to-engine", Status: "failed", Message: submitErr.Error()}, "system")
-			writeJSON(w, http.StatusAccepted, run)
-			return
-		}
-		if linked, linkErr := s.store.SetRunEngine(run.ID, engineID); linkErr == nil {
-			run = linked
-		}
-	}
+	run = s.dispatchPipeline(r.Context(), run)
 	writeJSON(w, http.StatusAccepted, run)
 }
 
@@ -736,17 +804,35 @@ func openfaas() *integrations.OpenFaaS {
 }
 
 func (s *Server) functions(w http.ResponseWriter, r *http.Request) {
+	persisted := filterFunctions(s.store.Functions(), allowedProjectIDs(s.store, principal(r)))
 	client := openfaas()
 	if client == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"configured": false, "items": []any{}})
+		writeJSON(w, http.StatusOK, map[string]any{"configured": false, "items": persisted, "total": len(persisted)})
 		return
 	}
-	items, err := client.ListFunctions(r.Context())
+	live, err := client.ListFunctions(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "openfaas_unreachable", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "items": items, "total": len(items)})
+	byName := make(map[string]integrations.Function, len(live))
+	for _, item := range live {
+		byName[item.Name] = item
+	}
+	for i := range persisted {
+		if item, ok := byName[persisted[i].Name]; ok {
+			persisted[i].Replicas, persisted[i].Status = item.Replicas, "deployed"
+			delete(byName, persisted[i].Name)
+		} else {
+			persisted[i].Status = "missing"
+		}
+	}
+	if privileged(principal(r)) {
+		for _, item := range byName {
+			persisted = append(persisted, api.Function{Name: item.Name, Image: item.Image, Replicas: item.Replicas, Status: "unmanaged"})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "items": persisted, "total": len(persisted)})
 }
 
 func (s *Server) deployFunction(w http.ResponseWriter, r *http.Request) {
@@ -755,22 +841,70 @@ func (s *Server) deployFunction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "not_configured", "OPENFAAS_URL is not configured")
 		return
 	}
-	var req integrations.Function
+	var req api.DeployFunctionRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	if err := client.DeployFunction(r.Context(), req); err != nil {
+	if req.ProjectID == "" && privileged(principal(r)) {
+		req.ProjectID = "prj-demo"
+	}
+	if !projectAllowed(s.store, principal(r), req.ProjectID) {
+		writeError(w, http.StatusForbidden, "access_denied", "project is not assigned to this user")
+		return
+	}
+	if existing := functionAllowed(s.store, principal(r), req.Name); !existing {
+		if err := enforceFunctionQuota(s.store, principal(r)); err != nil {
+			writeError(w, http.StatusForbidden, "quota_exceeded", err.Error())
+			return
+		}
+	}
+	limits, requests := map[string]string{}, map[string]string{}
+	if req.CPU != "" {
+		limits["cpu"], requests["cpu"] = req.CPU, req.CPU
+	}
+	if req.Memory != "" {
+		limits["memory"], requests["memory"] = req.Memory, req.Memory
+	}
+	deployment := integrations.Function{Name: req.Name, Image: req.Image, EnvVars: req.EnvVars, Labels: req.Labels, Annotations: req.Annotations, Limits: limits, Requests: requests}
+	if err := client.DeployFunction(r.Context(), deployment); err != nil {
 		writeError(w, http.StatusBadGateway, "deploy_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusAccepted, req)
+	item, err := s.store.UpsertFunction(req, principal(r).Subject, actor(r))
+	writeMutation(w, item, err, http.StatusAccepted)
+}
+
+func (s *Server) deleteFunction(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !functionAllowed(s.store, principal(r), name) {
+		writeError(w, http.StatusNotFound, "not_found", "function not found")
+		return
+	}
+	client := openfaas()
+	if client == nil {
+		writeError(w, http.StatusConflict, "not_configured", "OPENFAAS_URL is not configured")
+		return
+	}
+	if err := client.DeleteFunction(r.Context(), name); err != nil {
+		writeError(w, http.StatusBadGateway, "delete_failed", err.Error())
+		return
+	}
+	if err := s.store.DeleteFunction(name, actor(r)); err != nil {
+		writeMutation(w, struct{}{}, err, http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) invokeFunction(w http.ResponseWriter, r *http.Request) {
 	client := openfaas()
 	if client == nil {
 		writeError(w, http.StatusConflict, "not_configured", "OPENFAAS_URL is not configured")
+		return
+	}
+	if !functionAllowed(s.store, principal(r), r.PathValue("name")) {
+		writeError(w, http.StatusNotFound, "not_found", "function not found")
 		return
 	}
 	payload, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))

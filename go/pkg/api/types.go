@@ -24,11 +24,26 @@ type StorageGrant struct {
 }
 
 type ComputeGrant struct {
-	VCPUs       int `json:"vcpus"`
-	MemoryGB    int `json:"memory_gb"`
-	MaxVMs      int `json:"max_vms"`
-	MaxProjects int `json:"max_projects"`
-	MaxRuns     int `json:"max_concurrent_runs"`
+	Profile      string `json:"profile,omitempty"`
+	VCPUs        int    `json:"vcpus"`
+	MemoryGB     int    `json:"memory_gb"`
+	GPUs         int    `json:"gpus,omitempty"`
+	GPUType      string `json:"gpu_type,omitempty"`
+	MaxVMs       int    `json:"max_vms"`
+	MaxProjects  int    `json:"max_projects"`
+	MaxRuns      int    `json:"max_concurrent_runs"`
+	MaxFunctions int    `json:"max_functions"`
+}
+
+// ResourceProfile is an administrator-facing allocation preset. Profiles
+// keep common workspace sizing simple while the custom profile retains full
+// control for unusual workloads.
+type ResourceProfile struct {
+	Name        string       `json:"name"`
+	Label       string       `json:"label"`
+	Description string       `json:"description"`
+	Compute     ComputeGrant `json:"compute"`
+	StorageGB   int          `json:"storage_gb"`
 }
 
 type UpsertUserAccessRequest struct {
@@ -115,21 +130,41 @@ type UpsertBlogPostRequest struct {
 }
 
 type Project struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Template     string    `json:"template"`
-	Namespace    string    `json:"namespace"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
-	OwnerSubject string    `json:"owner_subject,omitempty"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Template     string         `json:"template"`
+	Namespace    string         `json:"namespace"`
+	Status       string         `json:"status"`
+	CreatedAt    time.Time      `json:"created_at"`
+	OwnerSubject string         `json:"owner_subject,omitempty"`
+	Repository   *GitRepository `json:"repository,omitempty"`
 }
 
 type CreateProjectRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Template     string `json:"template"`
-	OwnerSubject string `json:"-"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	Template      string `json:"template"`
+	RepositoryURL string `json:"repository_url,omitempty"`
+	DefaultBranch string `json:"default_branch,omitempty"`
+	OwnerSubject  string `json:"-"`
+}
+
+// GitRepository binds a platform project to its source of truth without
+// storing source-control credentials in the control plane. Workspaces use
+// their own Git credential helper when cloning private repositories.
+type GitRepository struct {
+	URL           string     `json:"url"`
+	Provider      string     `json:"provider"`
+	DefaultBranch string     `json:"default_branch"`
+	LastCommit    string     `json:"last_commit,omitempty"`
+	SyncedAt      *time.Time `json:"synced_at,omitempty"`
+}
+
+type SetProjectRepositoryRequest struct {
+	URL           string `json:"url"`
+	DefaultBranch string `json:"default_branch"`
+	LastCommit    string `json:"last_commit,omitempty"`
 }
 
 type PipelineRun struct {
@@ -143,9 +178,12 @@ type PipelineRun struct {
 	ParentRunID string    `json:"parent_run_id,omitempty"`
 	// EngineRunID links the control-plane run to the execution engine's run
 	// (Prefect flow run id locally, KFP run id on Kubernetes).
-	EngineRunID string         `json:"engine_run_id,omitempty"`
-	Steps       []PipelineStep `json:"steps"`
-	Logs        []RunLog       `json:"logs,omitempty"`
+	EngineRunID   string         `json:"engine_run_id,omitempty"`
+	DefinitionID  string         `json:"definition_id,omitempty"`
+	ExecutionMode string         `json:"execution_mode,omitempty"`
+	Parameters    map[string]any `json:"parameters,omitempty"`
+	Steps         []PipelineStep `json:"steps"`
+	Logs          []RunLog       `json:"logs,omitempty"`
 }
 
 // UpdateRunStepRequest is sent by the executing pipeline itself (through the
@@ -172,8 +210,81 @@ type RunLog struct {
 }
 
 type SubmitPipelineRequest struct {
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
+	ProjectID    string         `json:"project_id"`
+	Name         string         `json:"name"`
+	DefinitionID string         `json:"definition_id,omitempty"`
+	Parameters   map[string]any `json:"parameters,omitempty"`
+}
+
+type JobResources struct {
+	CPU    string `json:"cpu,omitempty"`
+	Memory string `json:"memory,omitempty"`
+	GPU    int    `json:"gpu,omitempty"`
+}
+
+// PipelineJob is a reusable unit of work. Function jobs invoke an OpenFaaS
+// function; container jobs are handed to Prefect locally and KFP on
+// Kubernetes. The same dependency graph is exposed to every interface.
+type PipelineJob struct {
+	Name        string            `json:"name"`
+	Kind        string            `json:"kind"`
+	Function    string            `json:"function,omitempty"`
+	Image       string            `json:"image,omitempty"`
+	Command     []string          `json:"command,omitempty"`
+	DependsOn   []string          `json:"depends_on,omitempty"`
+	Environment map[string]string `json:"environment,omitempty"`
+	Resources   JobResources      `json:"resources"`
+	Retries     int               `json:"retries"`
+}
+
+type PipelineDefinition struct {
+	ID            string        `json:"id"`
+	ProjectID     string        `json:"project_id"`
+	Name          string        `json:"name"`
+	Version       string        `json:"version"`
+	ExecutionMode string        `json:"execution_mode"`
+	Jobs          []PipelineJob `json:"jobs"`
+	RepositoryURL string        `json:"repository_url,omitempty"`
+	CommitSHA     string        `json:"commit_sha,omitempty"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+}
+
+type UpsertPipelineDefinitionRequest struct {
+	ProjectID     string        `json:"project_id"`
+	Name          string        `json:"name"`
+	Version       string        `json:"version"`
+	ExecutionMode string        `json:"execution_mode"`
+	Jobs          []PipelineJob `json:"jobs"`
+	RepositoryURL string        `json:"repository_url,omitempty"`
+	CommitSHA     string        `json:"commit_sha,omitempty"`
+}
+
+type Function struct {
+	Name         string            `json:"name"`
+	ProjectID    string            `json:"project_id"`
+	Image        string            `json:"image"`
+	Status       string            `json:"status"`
+	Replicas     int               `json:"replicas"`
+	EnvVars      map[string]string `json:"env_vars,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"`
+	Annotations  map[string]string `json:"annotations,omitempty"`
+	CPU          string            `json:"cpu,omitempty"`
+	Memory       string            `json:"memory,omitempty"`
+	OwnerSubject string            `json:"owner_subject,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+}
+
+type DeployFunctionRequest struct {
+	ProjectID   string            `json:"project_id"`
+	Name        string            `json:"name"`
+	Image       string            `json:"image"`
+	EnvVars     map[string]string `json:"env_vars,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	CPU         string            `json:"cpu,omitempty"`
+	Memory      string            `json:"memory,omitempty"`
 }
 
 type Component struct {
