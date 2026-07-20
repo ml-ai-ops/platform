@@ -69,3 +69,15 @@ func TestPipelineDefinitionRejectsCycles(t *testing.T) {
 		t.Fatal("expected cyclic definition to be rejected")
 	}
 }
+
+func TestFunctionRequestValidatesRuntimeAndTriggers(t *testing.T) {
+	valid := api.DeployFunctionRequest{ProjectID: "prj-demo", Name: "score-events", Image: "registry/score:1", CPU: "500m", Memory: "1Gi", Annotations: map[string]string{"topic": "cron-function", "schedule": "*/5 * * * *", "com.nexus.invocation": "async"}}
+	if err := ValidateFunctionRequest(valid); err != nil {
+		t.Fatalf("valid function rejected: %v", err)
+	}
+	invalid := valid
+	invalid.Name = "Score Events"
+	if err := ValidateFunctionRequest(invalid); err == nil {
+		t.Fatal("invalid DNS label should be rejected")
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -25,6 +26,10 @@ func main() {
 		method, path = http.MethodGet, "/api/v1/projects"
 	case "pipeline list":
 		method, path = http.MethodGet, "/api/v1/pipelines/runs"
+	case "pipeline definitions":
+		method, path = http.MethodGet, "/api/v1/pipelines/definitions"
+	case "function list":
+		method, path = http.MethodGet, "/api/v1/functions"
 	case "model list":
 		method, path = http.MethodGet, "/api/v1/models"
 	case "agent list":
@@ -38,6 +43,20 @@ func main() {
 	default:
 		if len(os.Args) == 4 && os.Args[1] == "pipeline" && os.Args[2] == "submit" {
 			method, path, body = http.MethodPost, "/api/v1/pipelines/submit", map[string]string{"project_id": os.Args[3], "name": "training-pipeline"}
+		} else if len(os.Args) == 5 && os.Args[1] == "pipeline" && os.Args[2] == "submit" {
+			method, path, body = http.MethodPost, "/api/v1/pipelines/submit", map[string]string{"project_id": os.Args[3], "definition_id": os.Args[4]}
+		} else if len(os.Args) >= 6 && os.Args[1] == "function" && os.Args[2] == "deploy" {
+			method, path, body = http.MethodPost, "/api/v1/functions", map[string]string{"project_id": os.Args[3], "name": os.Args[4], "image": os.Args[5]}
+		} else if len(os.Args) >= 4 && os.Args[1] == "function" && os.Args[2] == "invoke" {
+			method, path, body = http.MethodPost, "/api/v1/functions/"+url.PathEscape(os.Args[3])+"/invoke", json.RawMessage(env("MLAIOPS_FUNCTION_PAYLOAD", "{}"))
+		} else if len(os.Args) >= 4 && os.Args[1] == "function" && os.Args[2] == "invoke-async" {
+			method, path, body = http.MethodPost, "/api/v1/functions/"+url.PathEscape(os.Args[3])+"/invoke-async", json.RawMessage(env("MLAIOPS_FUNCTION_PAYLOAD", "{}"))
+		} else if len(os.Args) >= 5 && os.Args[1] == "project" && os.Args[2] == "connect" {
+			branch := "main"
+			if len(os.Args) > 5 {
+				branch = os.Args[5]
+			}
+			method, path, body = http.MethodPut, "/api/v1/projects/"+url.PathEscape(os.Args[3])+"/repository", map[string]string{"url": os.Args[4], "default_branch": branch}
 		} else {
 			usage()
 			os.Exit(2)
@@ -45,7 +64,8 @@ func main() {
 	}
 	var reader io.Reader
 	if body != nil {
-		raw, _ := json.Marshal(body)
+		raw, err := json.Marshal(body)
+		fatal(err)
 		reader = bytes.NewReader(raw)
 	}
 	request, err := http.NewRequest(method, base+path, reader)
@@ -73,7 +93,10 @@ func main() {
 	}
 }
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: mlaiops <project|pipeline|model|agent|tool|connection|audit> list | mlaiops pipeline submit <project-id>")
+	fmt.Fprintln(os.Stderr, "usage: mlaiops <project|pipeline|function|model|agent|tool|connection|audit> list")
+	fmt.Fprintln(os.Stderr, "       mlaiops pipeline definitions | pipeline submit <project-id> [definition-id]")
+	fmt.Fprintln(os.Stderr, "       mlaiops function deploy <project-id> <name> <image> | function <invoke|invoke-async> <name>")
+	fmt.Fprintln(os.Stderr, "       mlaiops project connect <project-id> <repository-url> [branch]")
 }
 func fatal(err error) {
 	if err != nil {

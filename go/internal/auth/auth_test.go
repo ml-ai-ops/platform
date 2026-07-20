@@ -96,6 +96,20 @@ func TestPermissionsMatchAllowed(t *testing.T) {
 	}
 }
 
+func TestProvisionedUserRequiresGitServiceForRepositoryBinding(t *testing.T) {
+	principal := Principal{Roles: []string{RoleUser}, Provisioned: true, Services: []string{"projects"}}
+	if Allowed(principal, http.MethodPut, "/api/v1/projects/prj-1/repository") {
+		t.Fatal("project access alone must not grant Git repository management")
+	}
+	principal.Services = append(principal.Services, "git")
+	if !Allowed(principal, http.MethodPut, "/api/v1/projects/prj-1/repository") {
+		t.Fatal("Git service should grant repository management")
+	}
+	if !Permissions(principal)["git_write"] {
+		t.Fatal("Git service should surface git_write permission")
+	}
+}
+
 func TestRBACLocalRole(t *testing.T) {
 	handler := RBAC(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := PrincipalFrom(r.Context())

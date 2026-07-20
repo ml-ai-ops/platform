@@ -393,6 +393,8 @@ func serviceForPath(path string) string {
 	switch {
 	case path == "/api/v1/dashboard", path == "/api/v1/onboarding/readiness", path == "/api/v1/events":
 		return "overview"
+	case strings.HasPrefix(path, "/api/v1/projects/") && strings.HasSuffix(path, "/repository"):
+		return "git"
 	case strings.HasPrefix(path, "/api/v1/projects"):
 		return "projects"
 	case strings.HasPrefix(path, "/api/v1/pipelines"):
@@ -438,6 +440,7 @@ func Permissions(principal Principal) map[string]bool {
 		"tools_write":       Allowed(principal, http.MethodPost, "/api/v1/tools"),
 		"features_write":    Allowed(principal, http.MethodPost, "/api/v1/features"),
 		"functions_write":   Allowed(principal, http.MethodPost, "/api/v1/functions"),
+		"git_write":         Allowed(principal, http.MethodPut, "/api/v1/projects/example/repository"),
 		"connections_write": Allowed(principal, http.MethodPost, "/api/v1/connections"),
 		"access_manage":     Allowed(principal, http.MethodPut, "/api/v1/admin/users/example"),
 	}

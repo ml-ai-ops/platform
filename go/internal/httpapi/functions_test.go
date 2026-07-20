@@ -26,6 +26,9 @@ func fakeOpenFaaS(t *testing.T) *httptest.Server {
 			_, _ = w.Write([]byte(`[{"name":"sentiment-fn","image":"registry/fn:1","replicas":0}]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/function/sentiment-fn":
 			_, _ = w.Write([]byte(`{"sentiment":"positive"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/async-function/sentiment-fn":
+			w.Header().Set("X-Call-Id", "call-123")
+			w.WriteHeader(http.StatusAccepted)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -66,6 +69,23 @@ func TestFunctionDeployListInvoke(t *testing.T) {
 	server.ServeHTTP(invoked, httptest.NewRequest(http.MethodPost, "/api/v1/functions/sentiment-fn/invoke", strings.NewReader(`{"text":"great"}`)))
 	if invoked.Code != http.StatusOK || !strings.Contains(invoked.Body.String(), "positive") {
 		t.Fatalf("invoke failed: %d %s", invoked.Code, invoked.Body.String())
+	}
+
+	queued := httptest.NewRecorder()
+	server.ServeHTTP(queued, httptest.NewRequest(http.MethodPost, "/api/v1/functions/sentiment-fn/invoke-async", strings.NewReader(`{"text":"later"}`)))
+	if queued.Code != http.StatusAccepted || !strings.Contains(queued.Body.String(), `"call_id":"call-123"`) {
+		t.Fatalf("async invoke failed: %d %s", queued.Code, queued.Body.String())
+	}
+}
+
+func TestFunctionDeployValidatesEventTrigger(t *testing.T) {
+	upstream := fakeOpenFaaS(t)
+	defer upstream.Close()
+	t.Setenv("OPENFAAS_URL", upstream.URL)
+	response := httptest.NewRecorder()
+	testServer().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/functions", strings.NewReader(`{"name":"sentiment-fn","image":"registry/fn:1","annotations":{"topic":"cron-function","schedule":"not cron"}}`)))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "five-field") {
+		t.Fatalf("expected trigger validation failure, got %d %s", response.Code, response.Body.String())
 	}
 }
 

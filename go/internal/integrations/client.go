@@ -251,6 +251,22 @@ func (o OpenFaaS) Invoke(ctx context.Context, name string, payload []byte) ([]by
 	return o.checked(response, err)
 }
 
+// InvokeAsync queues a function invocation and returns the provider call id.
+func (o OpenFaaS) InvokeAsync(ctx context.Context, name string, payload []byte) (string, error) {
+	if name == "" {
+		return "", errors.New("function name is required")
+	}
+	response, err := o.request(ctx, http.MethodPost, "/async-function/"+url.PathEscape(name), bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	callID := response.Header.Get("X-Call-Id")
+	if _, err = o.checked(response, nil); err != nil {
+		return "", err
+	}
+	return callID, nil
+}
+
 type KafkaREST struct{ client *Client }
 
 func NewKafkaREST(baseURL, token string) KafkaREST { return KafkaREST{client: New(baseURL, token)} }

@@ -24,6 +24,7 @@
         <button class="nav-item active" data-view="overview"><span>⌂</span> Overview</button>
         <button class="nav-item" data-view="projects"><span>◇</span> Projects</button>
         <button class="nav-item" data-view="pipelines"><span>↯</span> Pipelines</button>
+        <button class="nav-item" data-view="functions"><span>ƒ</span> Functions</button>
         <button class="nav-item" data-view="models"><span>◉</span> Models</button>
         <button class="nav-item" data-view="agents"><span>✦</span> Agents</button>
         <button class="nav-item" data-view="features"><span>▤</span> Features</button>
@@ -83,11 +84,18 @@
         </div>
       </section>
 
-      <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">WORKSPACES</p><h2>Your projects</h2><p>Each project gets a clear path from exploration to production.</p></div></div><div id="project-grid" class="card-grid"></div></section>
+      <section id="projects" class="view"><div class="section-heading"><div><p class="eyebrow">GIT-NATIVE WORKSPACES</p><h2>Your projects</h2><p>Every project can bind to a Git repository shared by Jupyter, the IDE, CI, and distributed teammates.</p></div></div><div id="project-grid" class="card-grid"></div></section>
 
       <section id="pipelines" class="view">
-        <div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline runs</h2><p>Real execution through the pipeline engine — every step reported live.</p></div><button class="primary" id="run-pipeline" data-perm="pipelines_write">▶ Run pipeline</button></div>
+        <div class="section-heading"><div><p class="eyebrow">ORCHESTRATION</p><h2>Pipeline flows</h2><p>Compose reusable container jobs and event-driven functions into versioned DAGs, then run the whole flow or invoke one function independently.</p></div><div class="heading-actions"><button id="new-pipeline-definition" data-perm="pipelines_write">＋ Define flow</button><button class="primary" id="run-pipeline" data-perm="pipelines_write">▶ Run pipeline</button></div></div>
+        <div class="pipeline-definition-grid" id="pipeline-definition-grid"></div>
         <div class="panel table-wrap"><table><thead><tr><th>Run</th><th>Project</th><th>Status</th><th>Progress</th><th>Started</th></tr></thead><tbody id="run-table"></tbody></table></div>
+      </section>
+
+      <section id="functions" class="view">
+        <div class="section-heading"><div><p class="eyebrow">EVENT-DRIVEN COMPUTE</p><h2>Functions</h2><p>Deploy OCI-packaged jobs to OpenFaaS, assign explicit CPU and memory, invoke them directly, or compose them into pipeline flows.</p></div><button class="primary" id="deploy-function" data-perm="functions_write">＋ Deploy function</button></div>
+        <div class="function-summary" id="function-summary"></div>
+        <div id="functions-grid" class="card-grid"></div>
       </section>
 
       <section id="models" class="view">
@@ -171,6 +179,7 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
       <label>Project name<input name="name" required minlength="3" placeholder="e.g. churn-prediction"></label>
       <label>What is it for?<textarea name="description" placeholder="A short, useful description"></textarea></label>
       <label>Starting template<select name="template"><option value="tabular-classification">Tabular classification</option><option value="forecasting">Time-series forecasting</option><option value="rag-agent">RAG / AI agent</option><option value="blank">Blank expert workspace</option></select></label>
+      <div id="new-project-git-fields"><label>Git repository <input name="repository_url" type="text" placeholder="https://github.com/team/project.git or git@github.com:team/project.git"></label><label>Default branch <input name="default_branch" value="main" placeholder="main"></label></div>
       <p class="form-error" id="form-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Create project</button></div>
     </form>
   </dialog>
@@ -179,7 +188,9 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
     <form id="submit-form">
       <p class="eyebrow">RUN PIPELINE</p><h2>Submit a real run</h2><p>The engine executes each step in a container and reports back live.</p>
       <label>Project<select name="project_id" id="submit-project"></select></label>
-      <label>Pipeline<select name="name"><option value="training-pipeline">training-pipeline</option></select></label>
+      <label>Pipeline definition<select name="definition_id" id="submit-definition"><option value="">Built-in training pipeline</option></select></label>
+      <label>Run name<input name="name" placeholder="Uses the definition name"></label>
+      <label>Parameters (JSON)<textarea name="parameters" rows="4">{}</textarea></label>
       <p class="form-error" id="submit-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Submit run</button></div>
     </form>
   </dialog>
@@ -206,8 +217,10 @@ python -m realtime.produce --demo recommendations --count 2</pre></article>
         <section class="form-section"><div class="form-section-title"><span>2</span><div><h3>Services and projects</h3><p>Apply least privilege; users can request more later.</p></div></div>
           <div class="checkbox-grid" id="service-grants"></div><label>Assigned project IDs<input name="project_ids" placeholder="prj-a, prj-b"></label>
         </section>
-        <section class="form-section"><div class="form-section-title"><span>3</span><div><h3>Resource allocation</h3><p>Set hard workspace and execution boundaries.</p></div></div>
-          <div class="quota-grid"><label>vCPUs<input name="vcpus" type="number" min="0" value="2"></label><label>Memory (GB)<input name="memory_gb" type="number" min="0" value="4"></label><label>Maximum VMs<input name="max_vms" type="number" min="0" value="1"></label><label>Maximum projects<input name="max_projects" type="number" min="0" value="2"></label><label>Concurrent runs<input name="max_runs" type="number" min="0" value="1"></label><label>Storage (GB)<input name="storage_gb" type="number" min="0" value="10"></label></div>
+        <section class="form-section"><div class="form-section-title"><span>3</span><div><h3>Resource allocation</h3><p>Choose a clear preset or switch to Custom for exact limits.</p></div></div>
+          <label>Resource profile<select name="profile" id="resource-profile"><option value="starter">Starter</option><option value="team">Team</option><option value="power">Power</option><option value="gpu">GPU</option><option value="custom">Custom</option></select><small id="resource-profile-description"></small></label>
+          <div class="resource-profile-summary" id="resource-profile-summary"></div>
+          <div class="quota-grid" id="custom-resource-fields"><label>vCPUs<input name="vcpus" type="number" min="0" value="2"></label><label>Memory (GB)<input name="memory_gb" type="number" min="0" value="4"></label><label>GPUs<input name="gpus" type="number" min="0" value="0"></label><label>GPU resource<input name="gpu_type" value="nvidia.com/gpu"></label><label>Maximum VMs<input name="max_vms" type="number" min="0" value="1"></label><label>Maximum projects<input name="max_projects" type="number" min="0" value="2"></label><label>Concurrent runs<input name="max_runs" type="number" min="0" value="1"></label><label>Maximum functions<input name="max_functions" type="number" min="0" value="3"></label><label>Storage (GB)<input name="storage_gb" type="number" min="0" value="25"></label></div>
           <label>Storage buckets<input name="buckets" placeholder="mlaiops-artifacts, user-data"></label>
         </section>
         <section class="form-section form-section-warning"><label class="inline-check"><input name="disabled" type="checkbox"> Suspend this user immediately</label></section>
@@ -279,11 +292,45 @@ mlaiops projects list</pre><div class="form-actions"><button class="primary" typ
     </form>
   </dialog>
 
+  <dialog id="deploy-function-dialog">
+    <form id="deploy-function-form" class="provisioning-form">
+      <header class="modal-header"><p class="eyebrow">DEPLOY FUNCTION</p><h2>Ship an event-driven job</h2><p>The OCI image is deployed through OpenFaaS and remains reusable as a pipeline job.</p></header>
+      <div class="modal-scroll">
+        <section class="form-section"><label>Project<select name="project_id" id="function-project" required></select></label><label>Function name<input name="name" required pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?" placeholder="feature-transform"></label><label>OCI image<input name="image" required placeholder="ghcr.io/team/feature-transform:1.0.0"></label></section>
+        <section class="form-section"><div class="form-section-title"><span>2</span><div><h3>Runtime resources</h3><p>Kubernetes-style quantities keep deployment portable.</p></div></div><div class="quota-grid"><label>CPU<input name="cpu" value="500m" placeholder="500m"></label><label>Memory<input name="memory" value="512Mi" placeholder="512Mi"></label></div><label>Environment (JSON)<textarea name="env_vars" rows="4">{}</textarea></label></section>
+        <section class="form-section"><div class="form-section-title"><span>3</span><div><h3>Event trigger</h3><p>Expose HTTP, queue work asynchronously, or subscribe through an OpenFaaS connector.</p></div></div><label>Trigger<select name="trigger_type" id="function-trigger-type"><option value="http">HTTP / webhook</option><option value="async">Asynchronous queue</option><option value="cron">Cron schedule</option><option value="kafka">Kafka topic</option></select></label><label id="function-trigger-source-label" hidden><span id="function-trigger-source-title">Source</span><input name="trigger_source" id="function-trigger-source"></label><small id="function-trigger-help">Invoke synchronously over the governed API.</small></section>
+      </div>
+      <footer class="modal-footer"><p class="form-error" id="deploy-function-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Deploy function</button></div></footer>
+    </form>
+  </dialog>
+
+  <dialog id="pipeline-definition-dialog">
+    <form id="pipeline-definition-form" class="provisioning-form pipeline-builder-form">
+      <header class="modal-header"><p class="eyebrow">PIPELINE DEFINITION</p><h2>Compose a reusable flow</h2><p>Dependencies form the DAG; Nexus rejects missing references and cycles before saving.</p></header>
+      <div class="modal-scroll"><section class="form-section"><div class="quota-grid"><label>Project<select name="project_id" id="definition-project" required></select><label>Execution<select name="execution_mode"><option value="functions">Functions · OpenFaaS</option><option value="prefect">Containers · Prefect / KFP</option></select></label><label>Name<input name="name" required value="event-pipeline"></label><label>Version<input name="version" required value="1"></label></div></section><section class="form-section"><label>Jobs (JSON)<textarea name="jobs" rows="14" spellcheck="false">[
+  {"name":"extract","kind":"function","function":"extract-fn","depends_on":[],"resources":{"cpu":"500m","memory":"512Mi"},"retries":1},
+  {"name":"score","kind":"function","function":"score-fn","depends_on":["extract"],"resources":{"cpu":"1","memory":"1Gi"},"retries":1}
+]</textarea></label></section></div>
+      <footer class="modal-footer"><p class="form-error" id="pipeline-definition-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Save flow</button></div></footer>
+    </form>
+  </dialog>
+
+  <dialog id="project-repository-dialog">
+    <form id="project-repository-form">
+      <input name="project_id" type="hidden">
+      <p class="eyebrow">GIT REPOSITORY</p><h2>Connect source control</h2><p>Credentials stay in your workspace Git credential helper; Nexus stores only repository metadata.</p>
+      <label>Repository URL<input name="url" required placeholder="https://github.com/team/project.git"></label>
+      <label>Default branch<input name="default_branch" required value="main"></label>
+      <p class="form-error" id="project-repository-error"></p><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Cancel</button><button class="primary" type="submit">Connect repository</button></div>
+    </form>
+  </dialog>
+
   <dialog id="about-dialog"><div class="detail-sheet"><p class="eyebrow">ABOUT</p><h2>Nexus</h2><div id="about-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <dialog id="preview-dialog"><div class="detail-sheet"><div id="preview-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <dialog id="run-dialog"><div class="detail-sheet"><div id="run-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <dialog id="metadata-dialog"><div class="detail-sheet"><div id="metadata-detail"></div><div class="form-actions"><button class="secondary" type="button" data-dialog-close>Close</button></div></div></dialog>
   <div id="toast" role="status"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@dagrejs/dagre@2.0.0/dist/dagre.min.js" integrity="sha384-AzQ70cQk8D+zQhLIF5sw1ZNJprV/OYEvT65aRyn0VxZJxNdcsyLtfMheBEDhEfRM" crossorigin="anonymous"></script>
   <script src="/app.js"></script>
 </body>
 </html>

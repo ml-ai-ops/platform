@@ -80,6 +80,15 @@ func TestNormalUserProjectOwnershipAndQuota(t *testing.T) {
 	}
 }
 
+func TestNormalUserNeedsGitServiceToCreateConnectedProject(t *testing.T) {
+	server, _ := accessServer(t)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, userRequest(http.MethodPost, "/api/v1/projects", `{"name":"connected project","template":"blank","repository_url":"https://github.com/acme/project.git"}`))
+	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "Git service") {
+		t.Fatalf("repository binding must require Git service: %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestDisabledUserIsDeniedEvenForAssignedService(t *testing.T) {
 	server, repository := accessServer(t)
 	_, err := repository.UpsertUserAccess("user-1", api.UpsertUserAccessRequest{

@@ -86,6 +86,7 @@ func New(data store.Repository, static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/v1/functions", server.deployFunction)
 	mux.HandleFunc("DELETE /api/v1/functions/{name}", server.deleteFunction)
 	mux.HandleFunc("POST /api/v1/functions/{name}/invoke", server.invokeFunction)
+	mux.HandleFunc("POST /api/v1/functions/{name}/invoke-async", server.invokeFunctionAsync)
 	mux.HandleFunc("GET /api/v1/models", server.models)
 	mux.HandleFunc("POST /api/v1/models", server.registerModel)
 	mux.HandleFunc("POST /api/v1/models/{id}/promote", server.promoteModel)
@@ -457,6 +458,10 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	var req api.CreateProjectRequest
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if req.RepositoryURL != "" && !auth.Allowed(principal(r), http.MethodPut, "/api/v1/projects/new/repository") {
+		writeError(w, http.StatusForbidden, "access_denied", "Git service access is required to connect a repository")
 		return
 	}
 	req.OwnerSubject = principal(r).Subject
@@ -853,6 +858,10 @@ func (s *Server) deployFunction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "access_denied", "project is not assigned to this user")
 		return
 	}
+	if err := store.ValidateFunctionRequest(req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
 	if existing := functionAllowed(s.store, principal(r), req.Name); !existing {
 		if err := enforceFunctionQuota(s.store, principal(r)); err != nil {
 			writeError(w, http.StatusForbidden, "quota_exceeded", err.Error())
@@ -920,6 +929,29 @@ func (s *Server) invokeFunction(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(result)
+}
+
+func (s *Server) invokeFunctionAsync(w http.ResponseWriter, r *http.Request) {
+	client := openfaas()
+	if client == nil {
+		writeError(w, http.StatusConflict, "not_configured", "OPENFAAS_URL is not configured")
+		return
+	}
+	if !functionAllowed(s.store, principal(r), r.PathValue("name")) {
+		writeError(w, http.StatusNotFound, "not_found", "function not found")
+		return
+	}
+	payload, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	callID, err := client.InvokeAsync(r.Context(), r.PathValue("name"), payload)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "invoke_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "call_id": callID})
 }
 
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {

@@ -11,7 +11,42 @@ import (
 	"github.com/ml-ai-ops/platform/pkg/api"
 )
 
-var resourceQuantity = regexp.MustCompile(`^[1-9][0-9]*(m|Mi|Gi)?$`)
+var (
+	resourceQuantity = regexp.MustCompile(`^[1-9][0-9]*(m|Mi|Gi)?$`)
+	functionName     = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+)
+
+// ValidateFunctionRequest applies the portable subset of the OpenFaaS and
+// Kubernetes function contracts before anything is sent to the runtime.
+func ValidateFunctionRequest(req api.DeployFunctionRequest) error {
+	if req.ProjectID == "" || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Image) == "" {
+		return errors.New("project_id, name and image are required")
+	}
+	if !functionName.MatchString(req.Name) {
+		return errors.New("function name must be a lowercase DNS label")
+	}
+	if req.CPU != "" && !resourceQuantity.MatchString(req.CPU) {
+		return errors.New("CPU must be a quantity such as 500m or 2")
+	}
+	if req.Memory != "" && !resourceQuantity.MatchString(req.Memory) {
+		return errors.New("memory must be a quantity such as 512Mi or 2Gi")
+	}
+	mode := req.Annotations["com.nexus.invocation"]
+	if mode != "" && mode != "sync" && mode != "async" {
+		return errors.New("com.nexus.invocation must be sync or async")
+	}
+	if schedule := strings.TrimSpace(req.Annotations["schedule"]); schedule != "" {
+		if !strings.Contains(req.Annotations["topic"], "cron-function") {
+			return errors.New("scheduled functions must subscribe to the cron-function topic")
+		}
+		for _, expression := range strings.Split(schedule, ";") {
+			if len(strings.Fields(expression)) != 5 {
+				return errors.New("schedule must contain five-field cron expressions")
+			}
+		}
+	}
+	return nil
+}
 
 func validateGitRepository(req api.SetProjectRepositoryRequest) (api.GitRepository, error) {
 	raw := strings.TrimSpace(req.URL)
@@ -222,14 +257,8 @@ func resetSteps(previous []api.PipelineStep) []api.PipelineStep {
 }
 
 func (s *Store) UpsertFunction(req api.DeployFunctionRequest, owner, actor string) (api.Function, error) {
-	if req.ProjectID == "" || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Image) == "" {
-		return api.Function{}, errors.New("project_id, name and image are required")
-	}
-	if req.CPU != "" && !resourceQuantity.MatchString(req.CPU) {
-		return api.Function{}, errors.New("CPU must be a quantity such as 500m or 2")
-	}
-	if req.Memory != "" && !resourceQuantity.MatchString(req.Memory) {
-		return api.Function{}, errors.New("memory must be a quantity such as 512Mi or 2Gi")
+	if err := ValidateFunctionRequest(req); err != nil {
+		return api.Function{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -313,8 +342,8 @@ func (p *Postgres) UpsertPipelineDefinition(definitionID string, req api.UpsertP
 	return definition, p.write("pipeline_definition", definition.ID, definition, "pipeline_definition.created", actor, nil)
 }
 func (p *Postgres) UpsertFunction(req api.DeployFunctionRequest, owner, actor string) (api.Function, error) {
-	if req.ProjectID == "" || strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Image) == "" {
-		return api.Function{}, errors.New("project_id, name and image are required")
+	if err := ValidateFunctionRequest(req); err != nil {
+		return api.Function{}, err
 	}
 	if !p.exists("project", req.ProjectID) {
 		return api.Function{}, ErrNotFound
@@ -340,5 +369,8 @@ func (p *Postgres) DeleteFunction(name, actor string) error {
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	event := api.AuditEvent{ID: id("evt"), Action: "function.deleted", Resource: "function", ResourceID: name, Actor: actorOrAnonymous(actor), CreatedAt: time.Now().UTC()}
+	_, err = p.pool.Exec(context.Background(), `INSERT INTO audit_events (tenant_id,id,action,resource,resource_id,actor,metadata,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		p.tenant, event.ID, event.Action, event.Resource, event.ResourceID, event.Actor, event.Metadata, event.CreatedAt)
+	return err
 }

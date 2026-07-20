@@ -68,7 +68,7 @@ function showView(id) {
   activeView = id;
   document.querySelectorAll(".view").forEach(node => node.classList.toggle("active", node.id === id));
   document.querySelectorAll(".nav-item").forEach(node => node.classList.toggle("active", node.dataset.view === id));
-  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", settings:"Your account, tools, and preferences.", blogs:"Write what the engineering team learns.", access:"Provision only what people need."};
+  const labels = {overview:"Good morning, builder.", projects:"Build with a clear starting point.", pipelines:"Every run, made legible.", functions:"Small jobs, composed into serious systems.", models:"Promote with confidence.", agents:"Understand every agent turn.", features:"One source of truth for features.", storage:"Artifacts and live endpoints.", realtime:"Score events as they happen.", catalog:"Reuse what your team knows.", platform:"Connect the production pieces.", profile:"Know exactly what you can use.", settings:"Your account, tools, and preferences.", blogs:"Write what the engineering team learns.", access:"Provision only what people need."};
   document.querySelector("#page-title").textContent = labels[id] || "Workspace";
   if (viewLoaders[id]) viewLoaders[id]().catch(error => toast(error.message));
 }
@@ -87,20 +87,38 @@ let projectCache = [];
 async function loadProjects() {
   const projects = await api("/api/v1/projects");
   projectCache = projects;
-  document.querySelector("#project-grid").innerHTML = projects.length ? projects.map(project => `<article class="card interactive-card" role="button" tabindex="0" data-project-detail="${escapeHTML(project.id)}"><span class="kind">${escapeHTML(project.template)}</span><h3>${escapeHTML(project.name)}</h3><p>${escapeHTML(project.description || "No description yet.")}</p><footer><span class="tag">${escapeHTML(project.namespace)}</span>${status(project.status)}</footer></article>`).join("") : `<p class="empty">No projects yet — create one to begin.</p>`;
+  document.querySelector("#project-grid").innerHTML = projects.length ? projects.map(project => `<article class="card interactive-card" role="button" tabindex="0" data-project-detail="${escapeHTML(project.id)}"><span class="kind">${escapeHTML(project.template)}</span><h3>${escapeHTML(project.name)}</h3><p>${escapeHTML(project.description || "No description yet.")}</p>${project.repository ? `<div class="repository-badge"><span>⌘</span><b>${escapeHTML(project.repository.provider)}</b><small>${escapeHTML(project.repository.default_branch)}</small></div>` : `<div class="repository-badge unbound"><span>＋</span><b>Connect Git</b></div>`}<footer><span class="tag">${escapeHTML(project.namespace)}</span>${status(project.status)}</footer></article>`).join("") : `<p class="empty">No projects yet — create one to begin.</p>`;
   const select = document.querySelector("#submit-project");
   select.innerHTML = projects.map(project => `<option value="${escapeHTML(project.id)}">${escapeHTML(project.name)}</option>`).join("");
+  document.querySelector("#function-project").innerHTML = select.innerHTML;
+  document.querySelector("#definition-project").innerHTML = select.innerHTML;
   return projects;
 }
 
+let pipelineDefinitionCache = [];
 async function loadRuns() {
-  const runs = await api("/api/v1/pipelines/runs");
+  const [runs, definitions] = await Promise.all([api("/api/v1/pipelines/runs"), api("/api/v1/pipelines/definitions")]);
+  pipelineDefinitionCache = definitions.items || [];
+  document.querySelector("#pipeline-definition-grid").innerHTML = pipelineDefinitionCache.length ? pipelineDefinitionCache.map(definition => `<article class="panel pipeline-definition-card" data-definition-detail="${escapeHTML(definition.id)}"><div><span class="kind">${escapeHTML(definition.execution_mode)} · v${escapeHTML(definition.version)}</span><h3>${escapeHTML(definition.name)}</h3><p>${definition.jobs.length} jobs · ${escapeHTML(definition.project_id)}</p></div><div class="mini-flow">${definition.jobs.map((job, index) => `<span>${index ? "→" : ""}<b>${escapeHTML(job.name)}</b></span>`).join("")}</div><button data-run-definition="${escapeHTML(definition.id)}" data-project-id="${escapeHTML(definition.project_id)}">Run</button></article>`).join("") : `<article class="panel empty-state"><b>No reusable flows yet</b><span>Define a flow from container jobs or deployed functions.</span></article>`;
+  document.querySelector("#submit-definition").innerHTML = `<option value="">Built-in training pipeline</option>${pipelineDefinitionCache.map(definition => `<option value="${escapeHTML(definition.id)}" data-project="${escapeHTML(definition.project_id)}">${escapeHTML(definition.name)} · v${escapeHTML(definition.version)} · ${escapeHTML(definition.execution_mode)}</option>`).join("")}`;
   document.querySelector("#run-table").innerHTML = runs.length ? runs.map(run => `<tr class="clickable" data-run-id="${escapeHTML(run.id)}"><td><b>${escapeHTML(run.name)}</b><br><small>${escapeHTML(run.id)}</small></td><td>${escapeHTML(run.project_id)}</td><td>${status(run.status)}</td><td><div class="bar"><i style="width:${Number(run.progress)}%"></i></div></td><td>${when(run.created_at)}</td></tr>`).join("") : `<tr><td colspan="5" class="empty">No runs yet — submit one.</td></tr>`;
 }
 
-// dagSVG lays out steps in dependency layers and draws the run DAG.
+// dagSVG uses Dagre's MIT-licensed directed-graph layout. A compact fallback
+// keeps run inspection functional if the pinned CDN asset cannot load.
 function dagSVG(steps) {
   if (!steps || !steps.length) return "";
+  const boxW = 180, boxH = 60;
+  if (window.dagre) {
+    const graph = new dagre.graphlib.Graph().setGraph({rankdir:"LR", ranksep:64, nodesep:34, marginx:18, marginy:18}).setDefaultEdgeLabel(() => ({}));
+    steps.forEach(step => graph.setNode(step.name, {width:boxW, height:boxH}));
+    steps.forEach(step => (step.depends_on || []).forEach(parent => graph.setEdge(parent, step.name)));
+    dagre.layout(graph);
+    const colors = {succeeded:"#30d158",running:"#0a84ff",failed:"#ff453a",pending:"#8e8e93",skipped:"#8e8e93",cancelled:"#ff9f0a"};
+    const edges = graph.edges().map(edge => { const points = graph.edge(edge).points.map(point => `${point.x},${point.y}`).join(" "); return `<polyline points="${points}" class="dag-edge" marker-end="url(#dag-arrow)"/>`; }).join("");
+    const nodes = steps.map(step => { const at = graph.node(step.name); return `<g transform="translate(${at.x-boxW/2},${at.y-boxH/2})"><rect width="${boxW}" height="${boxH}" rx="12" class="dag-node"/><circle cx="18" cy="22" r="6" fill="${colors[step.status] || "#8e8e93"}"/><text x="32" y="26" class="dag-name">${escapeHTML(step.name)}</text><text x="18" y="46" class="dag-status">${escapeHTML(step.image || step.status)} · ${escapeHTML(step.status)}</text></g>`; }).join("");
+    return `<div class="dag-canvas"><svg class="dag-svg" viewBox="0 0 ${graph.graph().width} ${graph.graph().height}" role="img" aria-label="Pipeline directed acyclic graph"><defs><marker id="dag-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>${edges}${nodes}</svg></div>`;
+  }
   const depth = {};
   const layerOf = step => {
     if (depth[step.name] !== undefined) return depth[step.name];
@@ -111,7 +129,7 @@ function dagSVG(steps) {
   steps.forEach(layerOf);
   const layers = {};
   steps.forEach(step => { (layers[depth[step.name]] ||= []).push(step); });
-  const colWidth = 190, rowHeight = 74, boxW = 160, boxH = 52;
+  const colWidth = 210, rowHeight = 82;
   const columns = Object.keys(layers).length;
   const rows = Math.max(...Object.values(layers).map(list => list.length));
   const position = {};
@@ -243,6 +261,23 @@ async function loadStorage() {
     : `<p class="empty">Serverless not configured. Set <code>OPENFAAS_URL</code> to connect it.</p>`;
 }
 
+let functionCache = [];
+function functionTrigger(fn) {
+  const annotations = fn.annotations || {};
+  if (annotations.schedule) return `Cron · ${annotations.schedule}`;
+  if (annotations.topic) return `Kafka · ${annotations.topic}`;
+  if (annotations["com.nexus.invocation"] === "async") return "Async queue";
+  return "HTTP / webhook";
+}
+async function loadFunctions() {
+  const [data] = await Promise.all([api("/api/v1/functions"), projectCache.length ? Promise.resolve(projectCache) : loadProjects()]);
+  functionCache = data.items || [];
+  const serving = functionCache.filter(item => item.status === "deployed").length;
+  const replicas = functionCache.reduce((total, item) => total + Number(item.replicas || 0), 0);
+  document.querySelector("#function-summary").innerHTML = `<article><span>Runtime</span><strong>${data.configured ? "Connected" : "Not configured"}</strong></article><article><span>Functions</span><strong>${functionCache.length}</strong></article><article><span>Serving</span><strong>${serving}</strong></article><article><span>Replicas</span><strong>${replicas}</strong></article>`;
+  document.querySelector("#functions-grid").innerHTML = functionCache.length ? functionCache.map(fn => `<article class="card function-card"><span class="kind">${escapeHTML(fn.project_id || "unmanaged")} · ${escapeHTML(fn.status)}</span><h3>${escapeHTML(fn.name)}</h3><code>${escapeHTML(fn.image)}</code><div class="function-resources"><span>${escapeHTML(fn.cpu || "default CPU")}</span><span>${escapeHTML(fn.memory || "default memory")}</span><span>${Number(fn.replicas || 0)} replicas</span><span>${escapeHTML(functionTrigger(fn))}</span></div><footer><button data-function-invoke="${escapeHTML(fn.name)}" data-function-async="${fn.annotations?.["com.nexus.invocation"] === "async"}">Invoke</button>${can("functions_write") && fn.project_id ? `<button class="danger" data-function-delete="${escapeHTML(fn.name)}">Remove</button>` : ""}</footer></article>`).join("") : `<article class="panel empty-state"><b>No functions deployed</b><span>Connect OpenFaaS and deploy an OCI image to run it independently or inside a flow.</span></article>`;
+}
+
 let realtimeCache = [];
 async function loadRealtime() {
   const data = await api("/api/v1/realtime");
@@ -278,8 +313,9 @@ async function loadComponents() {
   document.querySelector("#connection-grid").innerHTML = connections.items.length ? connections.items.map(item => `<article class="card connection-card"><span class="kind">${escapeHTML(item.type)}</span><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(item.endpoint)}</p><footer>${status(item.status)}${can("connections_write") ? `<button data-connection-test="${escapeHTML(item.id)}">Test</button>` : ""}</footer>${item.message ? `<small>${escapeHTML(item.message)}</small>` : ""}</article>`).join("") : `<div class="empty-state"><b>No services connected</b><span>Add Kubernetes, MLflow, storage and Kafka to complete onboarding.</span></div>`;
 }
 
-const accessServices = ["overview","projects","pipelines","models","agents","features","storage","realtime","catalog","platform","workbench","ide"];
+const accessServices = ["overview","projects","pipelines","functions","models","agents","features","storage","realtime","catalog","platform","git","workbench","ide"];
 let accessCache = [];
+let resourceProfiles = [];
 const csv = value => String(value || "").split(",").map(item => item.trim()).filter(Boolean);
 function accessPayload(form) {
   const value = Object.fromEntries(new FormData(form));
@@ -288,17 +324,33 @@ function accessPayload(form) {
     services:[...form.querySelectorAll("[name='services']:checked")].map(input => input.value),
     project_ids:csv(value.project_ids),
     storage:{size_gb:Number(value.storage_gb), buckets:csv(value.buckets)},
-    compute:{vcpus:Number(value.vcpus), memory_gb:Number(value.memory_gb), max_vms:Number(value.max_vms), max_projects:Number(value.max_projects), max_concurrent_runs:Number(value.max_runs)},
+    compute:{profile:value.profile, vcpus:Number(value.vcpus), memory_gb:Number(value.memory_gb), gpus:Number(value.gpus), gpu_type:value.gpu_type, max_vms:Number(value.max_vms), max_projects:Number(value.max_projects), max_concurrent_runs:Number(value.max_runs), max_functions:Number(value.max_functions)},
     disabled:form.elements.disabled.checked,
   };
 }
+
+function setResourceProfile(name) {
+  const form = document.querySelector("#access-form");
+  const profile = resourceProfiles.find(item => item.name === name);
+  const custom = name === "custom" || !profile;
+  if (profile && !custom) {
+    const values = {...profile.compute, storage_gb:profile.storage_gb};
+    Object.entries(values).forEach(([key, value]) => { if (form.elements[key] && key !== "profile") form.elements[key].value = value ?? ""; });
+  }
+  document.querySelector("#custom-resource-fields").classList.toggle("preset-locked", !custom);
+  document.querySelectorAll("#custom-resource-fields input").forEach(input => { input.readOnly = !custom; });
+  document.querySelector("#resource-profile-description").textContent = profile?.description || "Set every boundary explicitly.";
+  const compute = profile?.compute || {};
+  document.querySelector("#resource-profile-summary").innerHTML = custom ? `<span>Custom allocation</span>` : `<span><b>${compute.vcpus}</b> vCPU</span><span><b>${compute.memory_gb}</b> GB memory</span><span><b>${profile.storage_gb}</b> GB storage</span><span><b>${compute.max_concurrent_runs}</b> runs</span><span><b>${compute.max_functions}</b> functions</span>${compute.gpus ? `<span><b>${compute.gpus}</b> GPU</span>` : ""}`;
+}
 async function loadAccess() {
-  const [data, requests] = await Promise.all([api("/api/v1/admin/users"), api("/api/v1/admin/access-requests")]);
+  const [data, requests, profiles] = await Promise.all([api("/api/v1/admin/users"), api("/api/v1/admin/access-requests"), api("/api/v1/admin/resource-profiles")]);
+  resourceProfiles = profiles.items || [];
   accessCache = data.items || [];
   document.querySelector("#access-table").innerHTML = accessCache.length ? accessCache.map(item => `<tr>
     <td><b>${escapeHTML(item.email || item.subject)}</b><br><small>${escapeHTML(item.subject)}</small></td>
     <td><span class="tag">${escapeHTML(item.role)}</span></td><td>${item.services.map(service => `<span class="tag">${escapeHTML(service)}</span>`).join(" ") || "None"}</td>
-    <td>${item.compute.vcpus} vCPU · ${item.compute.memory_gb} GB<br><small>${item.compute.max_vms} VM · ${item.compute.max_projects} projects · ${item.compute.max_concurrent_runs} runs</small></td>
+    <td><span class="tag">${escapeHTML(item.compute.profile || "custom")}</span> ${item.compute.vcpus} vCPU · ${item.compute.memory_gb} GB${item.compute.gpus ? ` · ${item.compute.gpus} GPU` : ""}<br><small>${item.compute.max_vms} VM · ${item.compute.max_projects} projects · ${item.compute.max_concurrent_runs} runs · ${item.compute.max_functions || 0} functions</small></td>
     <td>${item.storage.size_gb} GB<br><small>${(item.storage.buckets || []).map(escapeHTML).join(", ") || "No buckets"}</small></td>
     <td>${status(item.disabled ? "suspended" : "active")}</td>
     <td><button data-access-edit="${escapeHTML(item.subject)}">Edit</button><button class="danger" data-access-delete="${escapeHTML(item.subject)}">Revoke</button></td>
@@ -325,9 +377,11 @@ async function loadMyAccess() {
       <div class="allocation-grid">
         <div><strong>${grant.compute.vcpus}</strong><span>vCPUs</span></div>
         <div><strong>${grant.compute.memory_gb}</strong><span>GB memory</span></div>
+        <div><strong>${grant.compute.gpus || 0}</strong><span>GPUs</span></div>
         <div><strong>${grant.compute.max_vms}</strong><span>VMs</span></div>
         <div><strong>${grant.compute.max_projects}</strong><span>Projects</span></div>
         <div><strong>${grant.compute.max_concurrent_runs}</strong><span>Concurrent runs</span></div>
+        <div><strong>${grant.compute.max_functions || 0}</strong><span>Functions</span></div>
         <div><strong>${grant.storage.size_gb}</strong><span>GB storage</span></div>
       </div>
     </article>` : `
@@ -341,7 +395,7 @@ async function loadMyAccess() {
       <div>${status(roleState)}<small>${me.provisioned ? "Administrator-provisioned profile" : isAdmin() ? "Full platform administrator" : "Contact an administrator for access"}</small></div>
     </div>
     <div class="split">
-      <article class="panel"><p class="eyebrow">ASSIGNED SERVICES</p><h3>${services.length} services available</h3><div class="service-grant-grid">${services.map(service => `<button data-view-target="${escapeHTML(service)}" ${["workbench","ide"].includes(service) ? "disabled" : ""}><span>✓</span>${escapeHTML(service)}</button>`).join("") || `<p class="empty">No services assigned.</p>`}</div></article>
+      <article class="panel"><p class="eyebrow">ASSIGNED SERVICES</p><h3>${services.length} services available</h3><div class="service-grant-grid">${services.map(service => `<button data-view-target="${escapeHTML(service === "git" ? "projects" : service)}" ${["workbench","ide"].includes(service) ? "disabled" : ""}><span>✓</span>${escapeHTML(service)}</button>`).join("") || `<p class="empty">No services assigned.</p>`}</div></article>
       <article class="panel"><p class="eyebrow">PROJECT SCOPE</p><h3>${grant?.project_ids?.length || 0} explicitly assigned</h3><div class="tags">${(grant?.project_ids || []).map(id => `<span class="tag">${escapeHTML(id)}</span>`).join("") || `<span class="tag">${isAdmin() ? "All projects" : "Owned projects only"}</span>`}</div><p class="eyebrow access-subhead">STORAGE BUCKETS</p><div class="tags">${(grant?.storage?.buckets || []).map(name => `<span class="tag">${escapeHTML(name)}</span>`).join("") || `<span class="tag">${isAdmin() ? "All buckets" : "None assigned"}</span>`}</div></article>
     </div>${latestRequest ? `<article class="panel access-request-state"><div><p class="eyebrow">LATEST ACCESS REQUEST</p><h3>${escapeHTML(latestRequest.requested_services.join(", "))}</h3><p>${escapeHTML(latestRequest.reason)}</p></div><div>${status(latestRequest.status)}<small>${dateTime(latestRequest.updated_at)}</small></div></article>` : ""}${allocation}`;
 }
@@ -392,7 +446,7 @@ async function loadAdminBlogs() {
 }
 
 Object.assign(viewLoaders, {
-  overview: loadDashboard, projects: loadProjects, pipelines: loadRuns, models: loadModels,
+  overview: loadDashboard, projects: loadProjects, pipelines: loadRuns, functions: loadFunctions, models: loadModels,
   agents: loadAgents, features: loadFeatures, storage: loadStorage, realtime: loadRealtime,
   catalog: () => loadCatalog(document.querySelector("[data-kind].active")?.dataset.kind || ""),
   platform: loadComponents,
@@ -421,7 +475,7 @@ function connectEvents() {
 }
 
 // ---- application navigation ------------------------------------------------
-const openSubmitDialog = async () => { await loadProjects(); document.querySelector("#submit-dialog").showModal(); };
+const openSubmitDialog = async () => { await Promise.all([loadProjects(), loadRuns()]); document.querySelector("#submit-dialog").showModal(); };
 const shell = document.querySelector(".shell");
 const sidebarToggle = document.querySelector("#sidebar-toggle");
 const isMobile = () => window.matchMedia("(max-width: 650px)").matches;
@@ -464,6 +518,7 @@ document.querySelector("#ide-link").href = `http://${location.hostname}:13337`;
 document.querySelector("#account-button").addEventListener("click", () => showView("settings"));
 document.querySelector("#service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
 document.querySelector("#request-service-grants").innerHTML = accessServices.map(service => `<label class="inline-check"><input type="checkbox" name="services" value="${service}"> ${service}</label>`).join("");
+document.querySelector("#resource-profile").addEventListener("change", event => setResourceProfile(event.target.value));
 sidebarToggle.addEventListener("click", toggleSidebar);
 document.querySelector("#refresh-view").addEventListener("click", () => (viewLoaders[activeView] || loadDashboard)().then(() => toast("View refreshed.")).catch(error => toast(error.message)));
 document.querySelector("#open-help").addEventListener("click", () => showAbout().catch(error => toast(error.message)));
@@ -499,7 +554,11 @@ document.querySelector("#storage-up").addEventListener("click", () => {
 });
 
 const dialog = document.querySelector("#project-dialog");
-document.querySelector("#new-project").addEventListener("click", () => dialog.showModal());
+document.querySelector("#new-project").addEventListener("click", () => {
+  const fields = document.querySelector("#new-project-git-fields"), allowed = can("git_write");
+  fields.hidden = !allowed; fields.querySelectorAll("input").forEach(input => { input.disabled = !allowed; });
+  dialog.showModal();
+});
 function closeDialog(node) {
   const modal = node.closest("dialog");
   modal.querySelectorAll(".form-error").forEach(error => { error.textContent = ""; });
@@ -525,8 +584,67 @@ document.querySelector("#run-pipeline").addEventListener("click", openSubmitDial
 document.querySelector("#submit-form").addEventListener("submit", async event => {
   event.preventDefault(); const error = document.querySelector("#submit-error"); error.textContent = "";
   try {
-    await api("/api/v1/pipelines/submit", {method:"POST", body:JSON.stringify(Object.fromEntries(new FormData(event.target)))});
+    const payload = Object.fromEntries(new FormData(event.target));
+    payload.parameters = JSON.parse(payload.parameters || "{}");
+    if (!payload.definition_id) delete payload.definition_id;
+    await api("/api/v1/pipelines/submit", {method:"POST", body:JSON.stringify(payload)});
     document.querySelector("#submit-dialog").close(); toast("Run submitted to the engine."); await loadRuns();
+  } catch (failure) { error.textContent = failure.message; }
+});
+
+document.querySelector("#new-pipeline-definition").addEventListener("click", async () => {
+  await Promise.all([loadProjects(), loadFunctions()]);
+  document.querySelector("#pipeline-definition-error").textContent = "";
+  document.querySelector("#pipeline-definition-dialog").showModal();
+});
+document.querySelector("#pipeline-definition-form").addEventListener("submit", async event => {
+  event.preventDefault(); const form = event.target, error = document.querySelector("#pipeline-definition-error"); error.textContent = "";
+  try {
+    const payload = Object.fromEntries(new FormData(form)); payload.jobs = JSON.parse(payload.jobs);
+    await api("/api/v1/pipelines/definitions", {method:"POST", body:JSON.stringify(payload)});
+    document.querySelector("#pipeline-definition-dialog").close(); toast("Pipeline flow saved."); await loadRuns();
+  } catch (failure) { error.textContent = failure.message; }
+});
+
+document.querySelector("#deploy-function").addEventListener("click", async () => {
+  await loadProjects(); const form = document.querySelector("#deploy-function-form"); form.reset();
+  form.elements.cpu.value = "500m"; form.elements.memory.value = "512Mi"; form.elements.env_vars.value = "{}";
+  updateFunctionTrigger("http");
+  document.querySelector("#deploy-function-error").textContent = ""; document.querySelector("#deploy-function-dialog").showModal();
+});
+function updateFunctionTrigger(type) {
+  const label = document.querySelector("#function-trigger-source-label");
+  const source = document.querySelector("#function-trigger-source");
+  const title = document.querySelector("#function-trigger-source-title");
+  const help = document.querySelector("#function-trigger-help");
+  const settings = {
+    http:[false,"Source","","Invoke synchronously from HTTP, a webhook, the SDK, or a pipeline."],
+    async:[false,"Source","","Queue work immediately and receive an OpenFaaS call ID."],
+    cron:[true,"Cron schedule","*/5 * * * *","Five-field cron expression; the cron connector invokes this function."],
+    kafka:[true,"Kafka topic","events.created","The Kafka connector forwards every message on this topic."],
+  }[type] || [false,"Source","",""];
+  label.hidden = !settings[0]; title.textContent = settings[1]; source.placeholder = settings[2]; source.required = settings[0]; help.textContent = settings[3];
+}
+document.querySelector("#function-trigger-type").addEventListener("change", event => updateFunctionTrigger(event.target.value));
+document.querySelector("#deploy-function-form").addEventListener("submit", async event => {
+  event.preventDefault(); const form = event.target, error = document.querySelector("#deploy-function-error"); error.textContent = "";
+  try {
+    const payload = Object.fromEntries(new FormData(form)); payload.env_vars = JSON.parse(payload.env_vars || "{}");
+    payload.annotations = {"com.nexus.invocation": payload.trigger_type === "async" ? "async" : "sync"};
+    if (payload.trigger_type === "cron") Object.assign(payload.annotations, {topic:"cron-function", schedule:payload.trigger_source});
+    if (payload.trigger_type === "kafka") payload.annotations.topic = payload.trigger_source;
+    delete payload.trigger_type; delete payload.trigger_source;
+    await api("/api/v1/functions", {method:"POST", body:JSON.stringify(payload)});
+    document.querySelector("#deploy-function-dialog").close(); toast("Function deployed."); await loadFunctions();
+  } catch (failure) { error.textContent = failure.message; }
+});
+
+document.querySelector("#project-repository-form").addEventListener("submit", async event => {
+  event.preventDefault(); const form = event.target, error = document.querySelector("#project-repository-error"); error.textContent = "";
+  try {
+    const projectId = form.elements.project_id.value;
+    await api(`/api/v1/projects/${encodeURIComponent(projectId)}/repository`, {method:"PUT", body:JSON.stringify({url:form.elements.url.value, default_branch:form.elements.default_branch.value})});
+    document.querySelector("#project-repository-dialog").close(); document.querySelector("#metadata-dialog").close(); toast("Git repository connected."); await loadProjects();
   } catch (failure) { error.textContent = failure.message; }
 });
 
@@ -534,6 +652,7 @@ document.querySelector("#add-connection").addEventListener("click", () => docume
 document.querySelector("#add-user-access").addEventListener("click", () => {
   const form = document.querySelector("#access-form");
   form.reset(); form.elements.original_subject.value = ""; form.elements.request_id.value = ""; form.elements.subject.disabled = false;
+  form.elements.profile.value = "starter"; setResourceProfile("starter");
   document.querySelector("#access-error").textContent = "";
   document.querySelector("#access-dialog").showModal();
 });
@@ -668,7 +787,7 @@ document.querySelector("#traffic-form").addEventListener("submit", async event =
   } catch (failure) { error.textContent = failure.message; }
 });
 
-const functionState = {name: ""};
+const functionState = {name: "", async: false};
 document.querySelector("#function-form").addEventListener("submit", async event => {
   event.preventDefault();
   const error = document.querySelector("#function-error");
@@ -678,9 +797,10 @@ document.querySelector("#function-form").addEventListener("submit", async event 
   try {
     const payload = document.querySelector("#function-payload").value;
     JSON.parse(payload);
-    const result = await api(`/api/v1/functions/${encodeURIComponent(functionState.name)}/invoke`, {method:"POST", body:payload});
+    const route = functionState.async ? "invoke-async" : "invoke";
+    const result = await api(`/api/v1/functions/${encodeURIComponent(functionState.name)}/${route}`, {method:"POST", body:payload});
     output.textContent = JSON.stringify(result, null, 2);
-    toast("Function invocation completed.");
+    toast(functionState.async ? "Function invocation queued." : "Function invocation completed.");
   } catch (failure) { error.textContent = failure.message; }
 });
 
@@ -719,15 +839,20 @@ async function handleDynamicClick(event) {
     form.elements.email.value = item.email || "";
     form.elements.role.value = item.role;
     form.elements.project_ids.value = (item.project_ids || []).join(", ");
+    form.elements.profile.value = item.compute.profile || "custom";
     form.elements.vcpus.value = item.compute.vcpus;
     form.elements.memory_gb.value = item.compute.memory_gb;
+    form.elements.gpus.value = item.compute.gpus || 0;
+    form.elements.gpu_type.value = item.compute.gpu_type || "nvidia.com/gpu";
     form.elements.max_vms.value = item.compute.max_vms;
     form.elements.max_projects.value = item.compute.max_projects;
     form.elements.max_runs.value = item.compute.max_concurrent_runs;
+    form.elements.max_functions.value = item.compute.max_functions || 0;
     form.elements.storage_gb.value = item.storage.size_gb;
     form.elements.buckets.value = (item.storage.buckets || []).join(", ");
     form.elements.disabled.checked = item.disabled;
     form.querySelectorAll("[name='services']").forEach(input => { input.checked = item.services.includes(input.value); });
+    setResourceProfile(form.elements.profile.value);
     document.querySelector("#access-dialog").showModal();
     return;
   }
@@ -739,6 +864,7 @@ async function handleDynamicClick(event) {
     form.elements.original_subject.value = requestData.subject; form.elements.request_id.value = requestData.id;
     form.elements.subject.value = requestData.subject; form.elements.subject.disabled = true;
     form.elements.email.value = requestData.email || "";
+    form.elements.profile.value = "starter"; setResourceProfile("starter");
     form.querySelectorAll("[name='services']").forEach(input => { input.checked = requestData.requested_services.includes(input.value); });
     document.querySelector("#access-dialog").showModal(); return;
   }
@@ -781,11 +907,31 @@ async function handleDynamicClick(event) {
   const fnInvoke = event.target.closest("[data-function-invoke]");
   if (fnInvoke) {
     functionState.name = fnInvoke.dataset.functionInvoke;
-    document.querySelector("#function-name").textContent = `Invoke ${functionState.name}`;
+    functionState.async = fnInvoke.dataset.functionAsync === "true";
+    document.querySelector("#function-name").textContent = `${functionState.async ? "Queue" : "Invoke"} ${functionState.name}`;
     document.querySelector("#function-payload").value = "{}";
     document.querySelector("#function-error").textContent = "";
     document.querySelector("#function-output").textContent = "";
     document.querySelector("#function-dialog").showModal();
+    return;
+  }
+  const fnDelete = event.target.closest("[data-function-delete]");
+  if (fnDelete) {
+    if (!confirm(`Remove ${fnDelete.dataset.functionDelete}? Pipelines referencing it will no longer run.`)) return;
+    await api(`/api/v1/functions/${encodeURIComponent(fnDelete.dataset.functionDelete)}`, {method:"DELETE"});
+    toast("Function removed."); await loadFunctions(); return;
+  }
+  const runDefinition = event.target.closest("[data-run-definition]");
+  if (runDefinition) {
+    await openSubmitDialog();
+    document.querySelector("#submit-project").value = runDefinition.dataset.projectId;
+    document.querySelector("#submit-definition").value = runDefinition.dataset.runDefinition;
+    return;
+  }
+  const definitionDetail = event.target.closest("[data-definition-detail]");
+  if (definitionDetail && !event.target.closest("button")) {
+    const item = pipelineDefinitionCache.find(definition => definition.id === definitionDetail.dataset.definitionDetail);
+    if (item) showMetadata("Pipeline flow", `${item.name} v${item.version}`, {...item, created_at:dateTime(item.created_at), updated_at:dateTime(item.updated_at)});
     return;
   }
   const runRow = event.target.closest("[data-run-id]");
@@ -834,8 +980,19 @@ async function handleDynamicClick(event) {
   const projectDetail = event.target.closest("[data-project-detail]");
   if (projectDetail) {
     const item = projectCache.find(project => project.id === projectDetail.dataset.projectDetail);
-    if (item) showMetadata("Project", item.name, {...item, created_at:dateTime(item.created_at)});
+    if (item) {
+      const clone = item.repository ? `<code>nexus project sync ${escapeHTML(item.id)}</code>` : "";
+      const repositoryAction = can("git_write") ? `<button data-project-repository="${escapeHTML(item.id)}">${item.repository ? "Update repository" : "Connect Git repository"}</button>` : "";
+      const actions = `<div class="sheet-actions">${repositoryAction}${item.repository ? `<a class="primary button-like" href="${escapeHTML(item.repository.url.startsWith("git@") ? "#" : item.repository.url.replace(/\.git$/, ""))}" ${item.repository.url.startsWith("git@") ? "aria-disabled=\"true\"" : "target=\"_blank\" rel=\"noreferrer\""}>Open repository ↗</a>` : ""}</div>${clone}`;
+      showMetadata("Project", item.name, {...item, created_at:dateTime(item.created_at)}, actions);
+    }
     return;
+  }
+  const projectRepository = event.target.closest("[data-project-repository]");
+  if (projectRepository) {
+    const item = projectCache.find(project => project.id === projectRepository.dataset.projectRepository); if (!item) return;
+    const form = document.querySelector("#project-repository-form"); form.elements.project_id.value = item.id; form.elements.url.value = item.repository?.url || ""; form.elements.default_branch.value = item.repository?.default_branch || "main";
+    document.querySelector("#project-repository-error").textContent = ""; document.querySelector("#project-repository-dialog").showModal(); return;
   }
   const modelDetail = event.target.closest("[data-model-detail]");
   if (modelDetail) {
