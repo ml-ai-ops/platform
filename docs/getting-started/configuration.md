@@ -176,7 +176,18 @@ Used by the agent runtime and trace proxy.
 
 ## Kubernetes scale path (optional)
 
-Read by the operator and integration worker only: `KFP_URL`, `KFP_TOKEN`,
-`KFP_EXPERIMENT_ID`, `MLFLOW_URL`, `FEAST_URL`, `DOCKER_HOST_URL`, `DOCKER_SOCKET`.
-These configure the literal Kubernetes fidelity path and are not needed for local or
-single-VM use.
+Read by the operator and integration worker only:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `KFP_URL` / `KFP_TOKEN` / `KFP_EXPERIMENT_ID` | installation-specific | Kubernetes pipeline execution |
+| `MLFLOW_URL` | in-cluster MLflow | Model lifecycle integration |
+| `WORKBENCH_IMAGE` | `ghcr.io/ml-ai-ops/jupyter:latest` | Image for provisioned Jupyter containers |
+| `IDE_IMAGE` | `ghcr.io/ml-ai-ops/ide:latest` | Image for provisioned IDE containers |
+| `WORKSPACE_STORAGE_CLASS` | cluster default | Storage class for per-user PVCs |
+| `MLAIOPS_TARGET_NAMESPACE` | `default` | Namespace where lifecycle CRDs and workspaces are created |
+
+These configure the Kubernetes fidelity path and are not needed for local or
+single-VM use. A `NexusWorkspace` receives a generated authentication secret; put
+its internal service behind the organization's authenticated ingress before
+exposing it outside the cluster.

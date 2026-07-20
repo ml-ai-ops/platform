@@ -27,6 +27,8 @@ Read commands (list resources as pretty-printed JSON):
 ```bash
 mlaiops project list
 mlaiops pipeline list
+mlaiops pipeline definitions
+mlaiops function list
 mlaiops model list
 mlaiops agent list
 mlaiops tool list
@@ -38,6 +40,16 @@ Submit a pipeline for a project (runs `training-pipeline`):
 
 ```bash
 mlaiops pipeline submit <project-id>
+mlaiops pipeline submit <project-id> <definition-id>
+```
+
+Connect Git and manage independent functions:
+
+```bash
+mlaiops project connect <project-id> <repository-url> [branch]
+mlaiops function deploy <project-id> <name> <oci-image>
+MLAIOPS_FUNCTION_PAYLOAD='{"id":"evt-1"}' mlaiops function invoke <name>
+MLAIOPS_FUNCTION_PAYLOAD='{"id":"evt-2"}' mlaiops function invoke-async <name>
 ```
 
 ## Examples
@@ -55,6 +67,6 @@ Non-2xx responses print the error body to stderr and exit non-zero, so the CLI
 composes cleanly in shell scripts.
 
 !!! tip "Auth"
-    The CLI sends no bearer token. Against a public (OIDC) gateway you'd front it
-    with your own auth; for automation, use the [SDK](../modules/python.md) or call
-    the API directly with the appropriate `Authorization` header.
+    Set `MLAIOPS_TOKEN` to a scoped personal key from **Console → Settings**.
+    The CLI sends it as a bearer token and the gateway enforces the same service,
+    project, and quota boundaries as the console.

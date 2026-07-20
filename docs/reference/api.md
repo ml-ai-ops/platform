@@ -21,6 +21,7 @@ document remains available at `GET /api/openapi.json`. Every request is authoriz
 | `GET` | `/api/v1/admin/users` | admin/operator | List provisioned users |
 | `PUT` | `/api/v1/admin/users/{subject}` | admin/operator | Assign role, services, projects, storage, and compute quotas |
 | `DELETE` | `/api/v1/admin/users/{subject}` | admin/operator | Revoke all access |
+| `GET` | `/api/v1/admin/resource-profiles` | admin/operator | List canonical starter/team/power/GPU/custom allocations |
 | `GET` | `/api/v1/access-requests` | authenticated user | List the caller's access requests |
 | `POST` | `/api/v1/access-requests` | authenticated user | Request one or more platform services |
 | `GET` | `/api/v1/admin/access-requests` | admin/operator | List the organization approval queue |
@@ -41,14 +42,18 @@ document remains available at `GET /api/openapi.json`. Every request is authoriz
 | Method | Path | Role | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/projects` | viewer+ | List projects |
-| `POST` | `/api/v1/projects` | engineer+ | Create a project (`name`, `description`, `template`) |
+| `POST` | `/api/v1/projects` | engineer+ | Create a project, optionally connected to Git |
+| `GET` | `/api/v1/projects/{id}` | viewer+ | Read project and repository metadata |
+| `PUT` | `/api/v1/projects/{id}/repository` | Git service | Connect a credential-free HTTPS/SSH repository reference |
 
 ## Pipelines
 
 | Method | Path | Role | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/v1/pipelines/runs` | viewer+ | List runs |
-| `POST` | `/api/v1/pipelines/submit` | engineer+ | Submit a run (`project_id`, `name`) |
+| `GET` / `POST` | `/api/v1/pipelines/definitions` | pipelines service | List or create versioned job DAGs |
+| `GET` / `PUT` | `/api/v1/pipelines/definitions/{id}` | pipelines service | Read or update a reusable flow |
+| `POST` | `/api/v1/pipelines/submit` | engineer+ | Submit a built-in or definition-backed run with parameters |
 | `GET` | `/api/v1/pipelines/runs/{id}` | viewer+ | Run detail: steps (DAG) + logs |
 | `POST` | `/api/v1/pipelines/runs/{id}/cancel` | engineer+ | Cancel (propagates to the engine) |
 | `POST` | `/api/v1/pipelines/runs/{id}/retry` | engineer+ | Retry |
@@ -124,8 +129,10 @@ document remains available at `GET /api/openapi.json`. Every request is authoriz
 | `GET` | `/api/v1/realtime` | viewer+ | Live stream-demo statistics |
 | `POST` | `/api/v1/realtime/{demo}` | service | Report stream stats (from the processor) |
 | `GET` | `/api/v1/functions` | viewer+ | List serverless functions |
-| `POST` | `/api/v1/functions` | engineer+ | Deploy a function |
+| `POST` | `/api/v1/functions` | functions service | Deploy an OCI function with resource limits and event annotations |
+| `DELETE` | `/api/v1/functions/{name}` | functions service | Remove an owned function |
 | `POST` | `/api/v1/functions/{name}/invoke` | engineer+ | Invoke a function |
+| `POST` | `/api/v1/functions/{name}/invoke-async` | functions service | Queue an invocation and return its call ID |
 
 ## Events & audit
 

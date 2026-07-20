@@ -6,9 +6,9 @@ infrastructure services and Python owns the ML-facing SDK and workload primitive
 
 ## Backend implemented
 
-- Durable control-plane API for projects, pipelines, models, agents, tools, connections, and
+- Durable control-plane API for Git-native projects, reusable pipelines, functions, models, agents, tools, connections, and
   immutable audit events
-- Versioned Kubernetes CRDs, RBAC, network isolation, and agent reconciliation plans
+- Versioned Kubernetes CRDs, RBAC, network isolation, and reconciled per-user Jupyter/IDE workspaces
 - Online feature gateway with a Feast-compatible request shape
 - S3/MinIO proxy generating bounded AWS SigV4 URLs
 - OpenAI-compatible LLM reverse proxy with asynchronous trace emission
@@ -19,7 +19,9 @@ infrastructure services and Python owns the ML-facing SDK and workload primitive
 - Leader-elected Kubernetes controllers for agents, pipelines, models and KServe deployment
 - Kafka lifecycle worker translating durable commands into Nexus CRDs
 - Guided onboarding with active infrastructure checks and readiness scoring
-- Pipeline DAG/log inspection, cancellation, retry and run lineage
+- Container and function DAGs, Dagre visualization, validation, parallel ready jobs, retries, parameters, and Git lineage
+- OpenFaaS-backed OCI functions with HTTP, async, Cron, and Kafka trigger configuration
+- Admin resource profiles and deny-by-default service/project/storage/function quotas
 - Quality-gated model promotion, canary deployment and rollback
 - Agent sessions, traces, tools, token usage and cost aggregation
 - Dex, Vault, CloudNativePG backup and scoped NetworkPolicy assets
@@ -27,8 +29,9 @@ infrastructure services and Python owns the ML-facing SDK and workload primitive
 - Single-binary CLI for common platform operations
 - Container and Kubernetes deployment assets
 
-The web workspace is intentionally lightweight; backend contracts and operational safety are
-the current priority.
+The embedded console exposes these backend contracts directly: administrators provision
+users and resources; engineers connect Git, deploy functions, compose flows, run workloads,
+and inspect live metadata without bypassing the same authorization boundaries.
 
 ## Quick start
 
@@ -83,9 +86,11 @@ Python SDK / CLI / UI
           ├── Feast / Redis    (features)
           ├── MinIO / S3       (artifacts)
           ├── Kafka            (events)
+          ├── OpenFaaS         (functions and event-driven microservices)
           └── Langfuse         (LLM traces and prompts)
 
-  Kubernetes CRDs ──► operator reconciliation ──► workloads and traffic
+  Access grant ──► NexusWorkspace ──► bounded Jupyter + IDE + persistent disk
+  Lifecycle CRDs ──► operator reconciliation ──► workloads and traffic
 ```
 
 ## Documentation

@@ -35,8 +35,9 @@ with MLAIOpsClient(base_url="http://localhost:8080", actor="you@example.com") as
 | Area | Methods |
 | --- | --- |
 | Health | `health()`, `readiness()` |
-| Projects | `list_projects()`, `create_project()` |
-| Pipelines | `list_pipeline_runs()`, `get_pipeline_run()`, `submit_pipeline()`, `cancel_pipeline_run()`, `retry_pipeline_run()` |
+| Projects | `list_projects()`, `create_project()`, `get_project()`, `connect_repository()` |
+| Pipelines | run lifecycle plus `list_pipeline_definitions()` and `create_pipeline_definition()` |
+| Functions | `list_functions()`, `deploy_function()`, sync/async invoke, and delete |
 | Models | `list_models()`, `register_model()`, `promote_model()`, `deploy_model()`, `rollback_model()` |
 | Agents | `list_agents()`, `deploy_agent()`, `invoke_agent()`, `set_agent_traffic()`, `agent_sessions()`, `agent_traces()` |
 | Tools | `list_tools()`, `register_tool()` |
@@ -45,7 +46,8 @@ with MLAIOpsClient(base_url="http://localhost:8080", actor="you@example.com") as
 
 ### `models.py` — typed resources
 
-Pydantic models returned by the client: `Project`, `PipelineRun`, `Model`, `Agent`,
+Pydantic models returned by the client: `Project`, `GitRepository`,
+`PipelineDefinition`, `PipelineRun`, `Function`, `Model`, `Agent`,
 `AgentSession`, `AgentTrace`, `Tool`, `Connection`, `Readiness`, `AuditEvent`.
 
 ### `agents.py` — agent memory & checkpoints
@@ -79,8 +81,9 @@ Pydantic models returned by the client: `Project`, `PipelineRun`, `Model`, `Agen
 
 ### `pipelines.py` — pipeline compiler
 
-Compiles a pipeline definition to a Prefect flow (the SDK side of the execution
-engine).
+Defines container `PipelineStep` and reusable `FunctionStep` jobs. `definition()`
+compiles either form to the validated control-plane contract and infers function or
+Prefect execution mode.
 
 ## `agent_runtime` — the agent service
 
