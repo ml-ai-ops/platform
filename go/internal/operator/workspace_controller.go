@@ -29,6 +29,12 @@ type WorkspaceReconciler struct {
 	WorkbenchImage string
 	IDEImage       string
 	GatewayURL     string
+	FeatureURL     string
+	StorageURL     string
+	MLflowURL      string
+	PrefectURL     string
+	LangfuseURL    string
+	KafkaRESTURL   string
 	StorageClass   string
 }
 
@@ -163,7 +169,11 @@ func (r *WorkspaceReconciler) containers(workspace mlaiopsv1.NexusWorkspace, aut
 			resources.Requests[corev1.ResourceName(gpuType)] = quantity
 			resources.Limits[corev1.ResourceName(gpuType)] = quantity
 		}
-		environment := []corev1.EnvVar{{Name: "MLAIOPS_URL", Value: r.GatewayURL}, {Name: "NEXUS_SUBJECT", Value: workspace.Spec.Subject}, {Name: "NEXUS_WORKSPACE", Value: "/workspace"}}
+		environment := []corev1.EnvVar{
+			{Name: "MLAIOPS_URL", Value: r.GatewayURL}, {Name: "MLAIOPS_FEATURE_GATEWAY_URL", Value: r.FeatureURL}, {Name: "MLAIOPS_STORAGE_PROXY_URL", Value: r.StorageURL},
+			{Name: "MLFLOW_TRACKING_URI", Value: r.MLflowURL}, {Name: "PREFECT_API_URL", Value: r.PrefectURL}, {Name: "LANGFUSE_HOST", Value: r.LangfuseURL}, {Name: "KAFKA_REST_URL", Value: r.KafkaRESTURL},
+			{Name: "NEXUS_SUBJECT", Value: workspace.Spec.Subject}, {Name: "NEXUS_WORKSPACE", Value: "/workspace"},
+		}
 		credentialName := "PASSWORD"
 		if service == "workbench" {
 			credentialName = "JUPYTER_TOKEN"
